@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة والتصميم (السكري المطفي والنصوص البيضاء داخل المربعات البنية)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (نصوص بيضاء 100% داخل المربعات البنية)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -37,13 +37,13 @@ st.markdown("""
         border: 2px solid #3d2616;
     }
     
-    .main-header span, .main-header div, .main-header p {
+    .main-header *, .main-header span, .main-header div, .main-header p, .main-header h1, .main-header h2, .main-header h3 {
         color: #ffffff !important;
         font-weight: 900 !important;
     }
 
-    /* المستطيلات المحيطة بالعناوين بلون بني غامق والنصوص بالبيض حصرياً */
-    .box-container, div.stMarkdown div.box-container {
+    /* المستطيلات المحيطة بالعناوين بلون بني غامق والنصوص بالكامل باللون الأبيض الناصع */
+    .box-container {
         background-color: #4a2e18 !important;
         border: 2px solid #3d2616 !important;
         padding: 20px !important;
@@ -52,8 +52,9 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    .box-container *, .box-container p, .box-container span, .box-container div, .box-container b, .box-container strong {
+    .box-container *, .box-container p, .box-container span, .box-container div, .box-container b, .box-container strong, .box-container h1, .box-container h2, .box-container h3, .box-container h4 {
         color: #ffffff !important;
+        font-weight: bold !important;
     }
     
     .box-title {
@@ -82,7 +83,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الجداول والتحديث التلقائي للأعمدة
+# 2. قاعدة البيانات وإصلاح الهيكلة والتحقق من كل الأعمدة
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -90,6 +91,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
+    # إنشاء جدول الفترات
     c.execute('''CREATE TABLE IF NOT EXISTS active_periods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_name TEXT NOT NULL,
@@ -98,11 +100,13 @@ def init_db():
         is_active INTEGER DEFAULT 0
     )''')
     
+    # إنشاء جدول الفروع
     c.execute('''CREATE TABLE IF NOT EXISTS branches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         branch_name TEXT UNIQUE NOT NULL
     )''')
     
+    # إنشاء جدول سجلات الحضور
     c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_id INTEGER,
@@ -118,16 +122,46 @@ def init_db():
         delay TEXT
     )''')
     
-    # تصحيح وإضافة الأعمدة تلقائياً إذا كانت مفقودة في الجداول القديمة
+    # فحص وإضافة أي أعمدة مفقودة تلقائياً في قاعدة البيانات الحالية
     c.execute("PRAGMA table_info(attendance_logs)")
-    columns = [col[1] for col in c.fetchall()]
-    if 'emp_code' in columns and 'emp_id' not in columns:
-        c.execute("ALTER TABLE attendance_logs RENAME COLUMN emp_code TO emp_id")
-    if 'emp_id' not in columns:
+    existing_cols = [col[1] for col in c.fetchall()]
+    
+    required_cols = {
+        'period_id': 'INTEGER',
+        'emp_id': 'TEXT',
+        'emp_name': 'TEXT',
+        'deprt': 'TEXT',
+        'date': 'TEXT',
+        'day_name': 'TEXT',
+        'status': 'TEXT',
+        'check_in': 'TEXT',
+        'check_out': 'TEXT',
+        'overtime': 'TEXT',
+        'delay': 'TEXT'
+    }
+    
+    # تعديل أسماء الأعمدة القديمة إن وجدت
+    if 'emp_code' in existing_cols and 'emp_id' not in existing_cols:
         try:
-            c.execute("ALTER TABLE attendance_logs ADD COLUMN emp_id TEXT")
+            c.execute("ALTER TABLE attendance_logs RENAME COLUMN emp_code TO emp_id")
+            existing_cols.append('emp_id')
         except:
             pass
+
+    if 'branch_name' in existing_cols and 'deprt' not in existing_cols:
+        try:
+            c.execute("ALTER TABLE attendance_logs RENAME COLUMN branch_name TO deprt")
+            existing_cols.append('deprt')
+        except:
+            pass
+
+    # إضافة الأعمدة المفقودة
+    for col, col_type in required_cols.items():
+        if col not in existing_cols:
+            try:
+                c.execute(f"ALTER TABLE attendance_logs ADD COLUMN {col} {col_type}")
+            except Exception as e:
+                pass
         
     conn.commit()
     conn.close()
@@ -164,7 +198,7 @@ if main_menu == "📅 إدارة شهور السنة والفترات المخص
     st.markdown("""
     <div class="box-container">
         <div class="box-title">تعليمات النظام الحر:</div>
-        اختر الشهر المطلوب لتحديد أي أيام بداية ونهاية تريدها (مثال: من 21 في الشهر إلى 21 في الشهر التالي). يمكنك تعديل التواريخ بحرية مطلقة واعتمادها، ثم الضغط على <b>تشغيل الفترة</b> لتبدأ في استقبال ملفات الحضور. السيستم لن يعمل بدون تفعيل الفترة!
+        <p style="color: #ffffff !important;">اختر الشهر المطلوب لتحديد أي أيام بداية ونهاية تريدها (مثال: من 21 في الشهر إلى 21 في الشهر التالي). يمكنك تعديل التواريخ بحرية مطلقة واعتمادها، ثم الضغط على <b>تشغيل الفترة</b> لتبدأ في استقبال ملفات الحضور. السيستم لن يعمل بدون تفعيل الفترة!</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -269,7 +303,7 @@ else:
         with h_tab1:
             c1, c2, c3 = st.columns(3)
             c1.metric("إجمالي السجلات", len(df_logs))
-            c2.metric("عدد الموظفين", df_logs['emp_id'].nunique() if not df_logs.empty else 0)
+            c2.metric("عدد الموظفين", df_logs['emp_id'].nunique() if not df_logs.empty and 'emp_id' in df_logs.columns else 0)
             c3.metric("حالة الفترة", "نشطة وتعمل بحرية التواريخ", delta="جاهز")
         with h_tab2:
             if not df_logs.empty and 'deprt' in df_logs.columns:
@@ -279,7 +313,7 @@ else:
             else:
                 st.info("لا توجد بيانات Factory مسجلة.")
         with h_tab3:
-            if not df_logs.empty:
+            if not df_logs.empty and 'deprt' in df_logs.columns:
                 st.bar_chart(df_logs['deprt'].value_counts())
 
     elif main_menu == "📥 رفع وتحليل ملفات الحضور (ملفين)":
@@ -288,7 +322,7 @@ else:
         st.markdown(f"""
         <div class="box-container">
             <div class="box-title">رفع ملفات النظام المزدوج (نطاق الفترة: {active_p_start} إلى {active_p_end}):</div>
-            قم برفع ملف <b>BLUEWORKS</b> الخاص بالموظفين والأقسام، وملف <b>08.Report (ZK)</b> الخاص بسجلات البصمة اليومية ليقوم السيستم بمعالجتها ودمجها تلقائياً.
+            <p style="color: #ffffff !important;">قم برفع ملف <b>BLUEWORKS</b> الخاص بالموظفين والأقسام، وملف <b>08.Report (ZK)</b> الخاص بسجلات البصمة اليومية ليقوم السيستم بمعالجتها ودمجها تلقائياً.</p>
         </div>
         """, unsafe_allow_html=True)
         
