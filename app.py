@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (RTL + سمني مطفي وبني غامق ونصوص بيضاء)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -79,58 +79,58 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الجداول
+# 2. قاعدة البيانات وإدارة الاتصال الآمن (ضبط مصنع تلقائي)
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS active_periods (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        period_name TEXT NOT NULL,
-        start_date TEXT NOT NULL,
-        end_date TEXT NOT NULL,
-        is_active INTEGER DEFAULT 0
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS uploaded_files (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        period_id INTEGER,
-        file_name TEXT,
-        upload_time TEXT
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        period_id INTEGER,
-        file_id INTEGER,
-        emp_id TEXT,
-        emp_name TEXT,
-        deprt TEXT,
-        date TEXT,
-        day_name TEXT,
-        status TEXT,
-        check_in TEXT,
-        check_out TEXT,
-        overtime TEXT,
-        delay TEXT
-    )''')
-    
-    c.execute("PRAGMA table_info(attendance_logs)")
-    columns = [col[1] for col in c.fetchall()]
-    if 'file_id' not in columns:
-        try: c.execute("ALTER TABLE attendance_logs ADD COLUMN file_id INTEGER")
-        except: pass
-            
-    conn.commit()
-    conn.close()
-
-init_db()
-
 def get_db():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, timeout=30)
+
+def init_db(factory_reset=False):
+    with get_db() as conn:
+        c = conn.cursor()
+        
+        if factory_reset:
+            c.execute("DROP TABLE IF EXISTS attendance_logs")
+            c.execute("DROP TABLE IF EXISTS uploaded_files")
+            c.execute("DROP TABLE IF EXISTS active_periods")
+            
+        c.execute('''CREATE TABLE IF NOT EXISTS active_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period_name TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS uploaded_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period_id INTEGER,
+            file_name TEXT,
+            upload_time TEXT
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period_id INTEGER,
+            file_id INTEGER,
+            emp_id TEXT,
+            emp_name TEXT,
+            deprt TEXT,
+            date TEXT,
+            day_name TEXT,
+            status TEXT,
+            check_in TEXT,
+            check_out TEXT,
+            overtime TEXT,
+            delay TEXT
+        )''')
+
+# تهيئة قاعدة البيانات بدون بيانات مسجلة (ضبط مصنع نظيف)
+if not os.path.exists(DB_PATH):
+    init_db(factory_reset=True)
+else:
+    init_db(factory_reset=False)
 
 # ==========================================
 # 3. حساب التأخير والإضافي (بالدقائق)
@@ -166,9 +166,8 @@ def calculate_attendance_metrics(deprt, check_in_str, check_out_str):
 # ==========================================
 # 4. القائمة العلوية الأفقية العريضة
 # ==========================================
-conn = get_db()
-active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
-conn.close()
+with get_db() as conn:
+    active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
 
 st.markdown('<div class="main-header"><span>🏢 نظام إدارة الحضور والانصراف المؤسسي</span></div>', unsafe_allow_html=True)
 
@@ -178,7 +177,8 @@ nav_tabs = [
     "📥 رفع وتحليل ملفات الحضور", 
     "🗑️ إدارة الشيتات المرفوعة وحذفها", 
     "✏️ التعديل اليدوي", 
-    "📋 شيت الحضور النهائي"
+    "📋 شيت الحضور النهائي",
+    "⚙️ ضبط مصنع (إعادة تعيين)"
 ]
 
 selected_tab = st.radio("القائمة الرئيسية:", nav_tabs, horizontal=True, label_visibility="collapsed")
@@ -194,7 +194,7 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
     st.markdown("""
     <div class="box-container">
         <div class="box-title">تعليمات النظام الحر:</div>
-        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة (مثال: من 21 الشهر الحالي إلى 20 الشهر القادم). اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
+        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة. اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -202,9 +202,8 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
     cols = st.columns(4)
     for idx, m in enumerate(months):
         with cols[idx % 4]:
-            conn = get_db()
-            m_data = pd.read_sql("SELECT * FROM active_periods WHERE period_name LIKE ?", conn, params=[f"%{m}%"])
-            conn.close()
+            with get_db() as conn:
+                m_data = pd.read_sql("SELECT * FROM active_periods WHERE period_name LIKE ?", conn, params=[f"%{m}%"])
             
             is_active = False
             s_saved, e_saved = str(datetime.now().date()), str(datetime.now().date())
@@ -233,15 +232,13 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
                 e_in = st.date_input(f"إلى_{m}", value=de, key=f"de_{m}")
                 
                 if st.form_submit_button("حفظ التواريخ"):
-                    conn = get_db()
-                    if m_data.empty:
-                        conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,0)",
-                                     (f"{m} 2026", str(s_in), str(e_in)))
-                    else:
-                        conn.execute("UPDATE active_periods SET start_date=?, end_date=? WHERE period_name LIKE ?",
-                                     (str(s_in), str(e_in), f"%{m}%"))
-                    conn.commit()
-                    conn.close()
+                    with get_db() as conn:
+                        if m_data.empty:
+                            conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,0)",
+                                         (f"{m} 2026", str(s_in), str(e_in)))
+                        else:
+                            conn.execute("UPDATE active_periods SET start_date=?, end_date=? WHERE period_name LIKE ?",
+                                         (str(s_in), str(e_in), f"%{m}%"))
                     st.success("تم الحفظ بنجاح!")
                     st.rerun()
             
@@ -249,19 +246,15 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
                 pid = int(m_data.iloc[0]['id'])
                 if is_active:
                     if st.button(f"⏹️ إيقاف الفترة {m}", key=f"stop_{m}"):
-                        conn = get_db()
-                        conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (pid,))
-                        conn.commit()
-                        conn.close()
+                        with get_db() as conn:
+                            conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (pid,))
                         st.warning("تم الإيقاف")
                         st.rerun()
                 else:
                     if st.button(f"▶️ تشغيل الفترة {m}", key=f"start_{m}"):
-                        conn = get_db()
-                        conn.execute("UPDATE active_periods SET is_active=0")
-                        conn.execute("UPDATE active_periods SET is_active=1 WHERE id=?", (pid,))
-                        conn.commit()
-                        conn.close()
+                        with get_db() as conn:
+                            conn.execute("UPDATE active_periods SET is_active=0")
+                            conn.execute("UPDATE active_periods SET is_active=1 WHERE id=?", (pid,))
                         st.success("تم التشغيل بنجاح!")
                         st.rerun()
 
@@ -282,9 +275,8 @@ else:
     
     if selected_tab == "📊 الداشبورد والمؤشرات":
         st.markdown(f'<div class="main-header"><span>📊 لوحة القيادة والمؤشرات الحية ({active_p_name})</span></div>', unsafe_allow_html=True)
-        conn = get_db()
-        df_logs = pd.read_sql("SELECT * FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
-        conn.close()
+        with get_db() as conn:
+            df_logs = pd.read_sql("SELECT * FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
         
         c1, c2, c3 = st.columns(3)
         c1.metric("إجمالي السجلات", len(df_logs))
@@ -317,18 +309,12 @@ else:
                         df_bw = pd.read_excel(bw_file)
                         df_rpt = pd.read_excel(rpt_file)
                         
-                        # تنظيف الأعمدة
                         df_bw.columns = [str(c).strip() for c in df_bw.columns]
                         df_rpt.columns = [str(c).strip() for c in df_rpt.columns]
                         
-                        conn = get_db()
                         file_name_label = f"ملفين ({bw_file.name} - {rpt_file.name}) بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                        c_cursor = conn.cursor()
-                        c_cursor.execute("INSERT INTO uploaded_files (period_id, file_name, upload_time) VALUES (?,?,?)",
-                                         (active_p_id, file_name_label, str(datetime.now())))
-                        f_id = c_cursor.lastrowid
                         
-                        count = 0
+                        records_to_insert = []
                         for idx, row in df_bw.iterrows():
                             code = str(row.iloc[0]) if pd.notna(row.iloc[0]) else str(idx)
                             name = str(row.get('Employee Name', row.get('Name', 'موظف')))
@@ -337,7 +323,6 @@ else:
                             day_name = str(row.get('اليوم', 'الإثنين'))
                             status = str(row.get('Status', 'Attend'))
                             
-                            # مطابقة ZK
                             matched_rpt = df_rpt[(df_rpt.iloc[:, 0].astype(str).str.contains(code, na=False)) & (df_rpt.iloc[:, 2].astype(str).str.contains(date_val, na=False))]
                             c_in, c_out = "08:00 AM", "04:00 PM"
                             if not matched_rpt.empty:
@@ -350,24 +335,30 @@ else:
                                     c_in = times[0]
                                     
                             delay_res, overtime_res = calculate_attendance_metrics(deprt, c_in, c_out)
+                            records_to_insert.append((active_p_id, code, name, deprt, date_val, day_name, status, c_in, c_out, overtime_res, delay_res))
                             
-                            conn.execute("""
+                        with get_db() as conn:
+                            c_cursor = conn.cursor()
+                            c_cursor.execute("INSERT INTO uploaded_files (period_id, file_name, upload_time) VALUES (?,?,?)",
+                                             (active_p_id, file_name_label, str(datetime.now())))
+                            f_id = c_cursor.lastrowid
+                            
+                            final_tuples = [(r[0], f_id, r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]) for r in records_to_insert]
+                            
+                            c_cursor.executemany("""
                                 INSERT INTO attendance_logs (period_id, file_id, emp_id, emp_name, deprt, date, day_name, status, check_in, check_out, overtime, delay)
                                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                            """, (active_p_id, f_id, code, name, deprt, date_val, day_name, status, c_in, c_out, overtime_res, delay_res))
-                            count += 1
-                        conn.commit()
-                        conn.close()
-                        st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً إلى الفترة!")
+                            """, final_tuples)
+                            
+                        st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {len(records_to_insert)} سجلاً إلى الفترة دون أي أخطاء!")
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
     elif selected_tab == "🗑️ إدارة الشيتات المرفوعة وحذفها":
         st.markdown(f'<div class="main-header"><span>🗑️ الشيتات والملفات المرفوعة للفترة ({active_p_name})</span></div>', unsafe_allow_html=True)
         
-        conn = get_db()
-        files_df = pd.read_sql("SELECT * FROM uploaded_files WHERE period_id=?", conn, params=[active_p_id])
-        conn.close()
+        with get_db() as conn:
+            files_df = pd.read_sql("SELECT * FROM uploaded_files WHERE period_id=?", conn, params=[active_p_id])
         
         if files_df.empty:
             st.info("لا توجد شيتات مرفوعة لهذه الفترة حتى الآن.")
@@ -389,19 +380,16 @@ else:
                     st.markdown(f"**{fname}** (وقت الرفع: {ftime})")
                 with c_d2:
                     if st.button(f"🗑️ حذف الملف", key=f"del_file_{fid}"):
-                        conn = get_db()
-                        conn.execute("DELETE FROM attendance_logs WHERE file_id=?", (fid,))
-                        conn.execute("DELETE FROM uploaded_files WHERE id=?", (fid,))
-                        conn.commit()
-                        conn.close()
+                        with get_db() as conn:
+                            conn.execute("DELETE FROM attendance_logs WHERE file_id=?", (fid,))
+                            conn.execute("DELETE FROM uploaded_files WHERE id=?", (fid,))
                         st.warning(f"تم حذف الملف وجميع سجلاته بنجاح!")
                         st.rerun()
 
     elif selected_tab == "✏️ التعديل اليدوي":
         st.markdown(f'<div class="main-header"><span>✏️ التعديل اليدوي على السجلات</span></div>', unsafe_allow_html=True)
-        conn = get_db()
-        df_logs = pd.read_sql("SELECT id, emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
-        conn.close()
+        with get_db() as conn:
+            df_logs = pd.read_sql("SELECT id, emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
         
         search_edit = st.text_input("🔍 بحث بالاسم أو الكود للتعديل:")
         if search_edit:
@@ -417,19 +405,16 @@ else:
                     no = st.text_input("وقت الانصراف", value=str(row.iloc[0]['انصراف']))
                     ns = st.text_input("الحالة", value=str(row.iloc[0]['الحالة']))
                     if st.form_submit_button("حفظ التعديل"):
-                        conn = get_db()
-                        conn.execute("UPDATE attendance_logs SET check_in=?, check_out=?, status=? WHERE id=?", (ni, no, ns, rec_id))
-                        conn.commit()
-                        conn.close()
+                        with get_db() as conn:
+                            conn.execute("UPDATE attendance_logs SET check_in=?, check_out=?, status=? WHERE id=?", (ni, no, ns, rec_id))
                         st.success("✅ تم التحديث!")
                         st.rerun()
 
     elif selected_tab == "📋 شيت الحضور النهائي":
         st.markdown(f'<div class="main-header"><span>📋 شيت الحضور النهائي والتصدير ({active_p_name})</span></div>', unsafe_allow_html=True)
-        conn = get_db()
-        q = "SELECT emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف', delay as 'التأخير', overtime as 'الإضافي' FROM attendance_logs WHERE period_id=?"
-        df_f = pd.read_sql(q, conn, params=[active_p_id])
-        conn.close()
+        with get_db() as conn:
+            q = "SELECT emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف', delay as 'التأخير', overtime as 'الإضافي' FROM attendance_logs WHERE period_id=?"
+            df_f = pd.read_sql(q, conn, params=[active_p_id])
         
         if not df_f.empty:
             if 'Date' in df_f.columns:
@@ -445,3 +430,17 @@ else:
             st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv, f"Attendance_{active_p_name}.csv", "text/csv")
         else:
             st.info("الشيت فارغ لهذه الفترة. قم برفع الملفات أولاً.")
+
+elif selected_tab == "⚙️ ضبط مصنع (إعادة تعيين)":
+    st.markdown('<div class="main-header"><span>⚙️ ضبط مصنع وإعادة تعيين النظام بالكامل</span></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="box-container">
+        <div class="box-title">تحذير هام:</div>
+        <p style="color: #ffffff !important;">الضغط على الزر أدناه سيؤدي إلى مسح جميع السجلات، الفترات، والملفات المرفوعة نهائياً والعودة بالنظام إلى نقطة الصفر (ضبط مصنع).</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("⚠️ تأكيد وعمل ضبط مصنع شامل للنظام"):
+        init_db(factory_reset=True)
+        st.success("✅ تم عمل ضبط مصنع للنظام بنجاح وتفريغ كافة البيانات! يمكنك الآن البدء من جديد.")
+        st.rerun()
