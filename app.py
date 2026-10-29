@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (RTL + سمني مطفي وبني غامق ونصوص بيضاء)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -20,13 +20,10 @@ st.markdown("""
     
     * { font-family: 'Cairo', sans-serif !important; font-weight: bold !important; font-size: 14px !important; direction: rtl !important; text-align: right !important; }
     
-    /* خلفية التطبيق سمني مطفي غير لامع */
     .stApp { background-color: #E8E4DF !important; color: #2c221e !important; }
     
-    /* إخفاء القائمة الجانبية تماماً */
     [data-testid="stSidebar"] { display: none !important; }
     
-    /* الهيدر والعناوين الكبرى */
     .main-header { 
         background-color: #4a2e18 !important; 
         color: #ffffff !important; 
@@ -45,7 +42,6 @@ st.markdown("""
         font-weight: 900 !important;
     }
 
-    /* المستطيلات البنية العريضة */
     .box-container {
         background-color: #4a2e18 !important;
         border: 2px solid #3d2616 !important;
@@ -68,7 +64,6 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* الأزرار */
     .stButton>button { 
         background: linear-gradient(135deg, #4a2e18 0%, #2b1a0d) !important; 
         color: #ffffff !important; 
@@ -126,10 +121,8 @@ def init_db():
     c.execute("PRAGMA table_info(attendance_logs)")
     columns = [col[1] for col in c.fetchall()]
     if 'file_id' not in columns:
-        try:
-            c.execute("ALTER TABLE attendance_logs ADD COLUMN file_id INTEGER")
-        except:
-            pass
+        try: c.execute("ALTER TABLE attendance_logs ADD COLUMN file_id INTEGER")
+        except: pass
             
     conn.commit()
     conn.close()
@@ -314,67 +307,60 @@ else:
         """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
-        with col1: bw_file = st.file_uploader("1️⃣ ارفع ملف Blueworks 8.xlsx", type=["xlsx", "xls"])
-        with col2: rpt_file = st.file_uploader("2️⃣ ارفع ملف Report 8.xlsx (ZK)", type=["xlsx", "xls"])
+        with col1: bw_file = st.file_uploader("1️⃣ ارفع ملف Blueworks 8.xlsx", type=["xlsx", "xls"], key="bw_key")
+        with col2: rpt_file = st.file_uploader("2️⃣ ارفع ملف Report 8.xlsx (ZK)", type=["xlsx", "xls"], key="rpt_key")
         
-        if bw_file and rpt_file and st.button("⚙️ معالجة ودمج الملفين وحساب التأخير والإضافي"):
-            try:
-                df_bw = pd.read_excel(bw_file, sheet_name=0)
-                df_rpt = pd.read_excel(rpt_file, sheet_name=0)
-                
-                # توحيد وتصحيح أسماء الأعمدة بمرونة
-                df_bw.columns = [str(c).strip() for c in df_bw.columns]
-                df_rpt.columns = [str(c).strip() for c in df_rpt.columns]
-                
-                code_col_bw = 'Code' if 'Code' in df_bw.columns else ('كود' if 'كود' in df_bw.columns else df_bw.columns[0])
-                name_col_bw = 'Employee Name' if 'Employee Name' in df_bw.columns else ('Name' if 'Name' in df_bw.columns else df_bw.columns[1])
-                branch_col_bw = 'Branch' if 'Branch' in df_bw.columns else ('deprt' if 'deprt' in df_bw.columns else df_bw.columns[2])
-                date_col_bw = 'Date' if 'Date' in df_bw.columns else df_bw.columns[3]
-                status_col_bw = 'Status' if 'Status' in df_bw.columns else df_bw.columns[-1]
-                
-                code_col_rpt = 'كود' if 'كود' in df_rpt.columns else ('Code' if 'Code' in df_rpt.columns else df_rpt.columns[0])
-                date_col_rpt = 'Date' if 'Date' in df_rpt.columns else df_rpt.columns[2]
-                time_col_rpt = 'Time' if 'Time' in df_rpt.columns else df_rpt.columns[3]
-                
-                conn = get_db()
-                file_name_label = f"ملفين مرفقين بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                c_cursor = conn.cursor()
-                c_cursor.execute("INSERT INTO uploaded_files (period_id, file_name, upload_time) VALUES (?,?,?)",
-                                 (active_p_id, file_name_label, str(datetime.now())))
-                f_id = c_cursor.lastrowid
-                
-                count = 0
-                for idx, row in df_bw.dropna(subset=[code_col_bw]).iterrows():
-                    code = str(row.get(code_col_bw))
-                    name = str(row.get(name_col_bw, 'موظف'))
-                    deprt = str(row.get(branch_col_bw, 'Factory'))
-                    date_val = str(row.get(date_col_bw, datetime.now().date()))[:10]
-                    day_name = str(row.get('اليوم', 'الإثنين'))
-                    status = str(row.get(status_col_bw, 'Attend'))
-                    
-                    matched_rpt = df_rpt[(df_rpt[code_col_rpt].astype(str).str.contains(code, na=False)) & (df_rpt[date_col_rpt].astype(str).str.contains(date_val, na=False))]
-                    c_in, c_out = "08:00 AM", "04:00 PM"
-                    if not matched_rpt.empty:
-                        t_str = str(matched_rpt.iloc[0][time_col_rpt])
-                        times = t_str.split()
-                        if len(times) >= 2:
-                            c_in = times[0]
-                            c_out = times[-1]
-                        elif len(times) == 1:
-                            c_in = times[0]
+        if bw_file is not None and rpt_file is not None:
+            if st.button("⚙️ بدء معالجة الملفين ودمج الحضور الآن"):
+                with st.spinner("جاري المعالجة والمطابقة..."):
+                    try:
+                        df_bw = pd.read_excel(bw_file)
+                        df_rpt = pd.read_excel(rpt_file)
+                        
+                        # تنظيف الأعمدة
+                        df_bw.columns = [str(c).strip() for c in df_bw.columns]
+                        df_rpt.columns = [str(c).strip() for c in df_rpt.columns]
+                        
+                        conn = get_db()
+                        file_name_label = f"ملفين ({bw_file.name} - {rpt_file.name}) بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                        c_cursor = conn.cursor()
+                        c_cursor.execute("INSERT INTO uploaded_files (period_id, file_name, upload_time) VALUES (?,?,?)",
+                                         (active_p_id, file_name_label, str(datetime.now())))
+                        f_id = c_cursor.lastrowid
+                        
+                        count = 0
+                        for idx, row in df_bw.iterrows():
+                            code = str(row.iloc[0]) if pd.notna(row.iloc[0]) else str(idx)
+                            name = str(row.get('Employee Name', row.get('Name', 'موظف')))
+                            deprt = str(row.get('Branch', row.get('Deprt', 'Factory')))
+                            date_val = str(row.get('Date', datetime.now().date()))[:10]
+                            day_name = str(row.get('اليوم', 'الإثنين'))
+                            status = str(row.get('Status', 'Attend'))
                             
-                    delay_res, overtime_res = calculate_attendance_metrics(deprt, c_in, c_out)
-                    
-                    conn.execute("""
-                        INSERT INTO attendance_logs (period_id, file_id, emp_id, emp_name, deprt, date, day_name, status, check_in, check_out, overtime, delay)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (active_p_id, f_id, code, name, deprt, date_val, day_name, status, c_in, c_out, overtime_res, delay_res))
-                    count += 1
-                conn.commit()
-                conn.close()
-                st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً مع مطابقة بصمات ZK!")
-            except Exception as e:
-                st.error(f"خطأ أثناء المعالجة: {e}")
+                            # مطابقة ZK
+                            matched_rpt = df_rpt[(df_rpt.iloc[:, 0].astype(str).str.contains(code, na=False)) & (df_rpt.iloc[:, 2].astype(str).str.contains(date_val, na=False))]
+                            c_in, c_out = "08:00 AM", "04:00 PM"
+                            if not matched_rpt.empty:
+                                t_str = str(matched_rpt.iloc[0].iloc[3])
+                                times = t_str.split()
+                                if len(times) >= 2:
+                                    c_in = times[0]
+                                    c_out = times[-1]
+                                elif len(times) == 1:
+                                    c_in = times[0]
+                                    
+                            delay_res, overtime_res = calculate_attendance_metrics(deprt, c_in, c_out)
+                            
+                            conn.execute("""
+                                INSERT INTO attendance_logs (period_id, file_id, emp_id, emp_name, deprt, date, day_name, status, check_in, check_out, overtime, delay)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                            """, (active_p_id, f_id, code, name, deprt, date_val, day_name, status, c_in, c_out, overtime_res, delay_res))
+                            count += 1
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً إلى الفترة!")
+                    except Exception as e:
+                        st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
     elif selected_tab == "🗑️ إدارة الشيتات المرفوعة وحذفها":
         st.markdown(f'<div class="main-header"><span>🗑️ الشيتات والملفات المرفوعة للفترة ({active_p_name})</span></div>', unsafe_allow_html=True)
