@@ -18,7 +18,7 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
     
-    * { font-family: 'Cairo', sans-serif !important; font-weight: bold !important; font-size: 14px !important; direction: rtl !important; text-align: right !important; }
+    * { font-family: 'Cairo', sans-serif !important; font-weight: bold !important; font-size: 14px !important; }
     
     .stApp { background-color: #E8E4DF !important; color: #2c221e !important; }
     
@@ -439,7 +439,9 @@ else:
                 df_f = df_f[df_f['اسم الموظف'].str.contains(search_name, na=False) | df_f['الكود'].str.contains(search_name, na=False)]
                 
             st.dataframe(df_f, use_container_width=True, hide_index=True)
-            csv = df_f.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv, f"Attendance_{active_p_name}.csv", "text/csv")
+            
+            # تصحيح صيغة تصدير CSV لفتحها في إكسيل بشكل صحيح في أعمدة منفصلة
+            csv_data = df_f.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
+            st.download_button("📥 تحميل الشيت بصيغة Excel", csv_data, f"Attendance_{active_p_name}.csv", "text/csv")
         else:
             st.info("الشيت فارغ لهذه الفترة. قم برفع الملفات أولاً.")
