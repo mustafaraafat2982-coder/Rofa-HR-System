@@ -102,31 +102,32 @@ conn = get_db()
 active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
 
 if active_period.empty:
-    st.sidebar.warning("⚠️ لا توجد فترة شهرية مسجلة.")
-    with st.sidebar.form("create_period_form"):
+    st.sidebar.warning("⚠️ لا توجد فترة شهرية مسجلة حالياً.")
+    with st.sidebar.form("create_period_form_initial"):
         st.markdown("#### فتح شهر / فترة جديدة")
-        p_name = st.text_input("اسم الفترة (مثال: نوفمبر 2026)")
-        p_start = st.date_input("يبدأ من تاريخ")
-        p_end = st.date_input("ينتهي في تاريخ")
+        p_name = st.text_input("اسم الفترة (مثال: نوفمبر 2026)", value="نوفمبر 2026")
+        p_start = st.date_input("يبدأ من تاريخ", value=datetime.now().date())
+        p_end = st.date_input("ينتهي في تاريخ", value=datetime.now().date())
         create_btn = st.form_submit_button("إنشاء وتنشيط الفترة")
         if create_btn and p_name:
             conn.execute("UPDATE active_periods SET is_active=0")
             conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,1)",
                          (p_name, str(p_start), str(p_end)))
             conn.commit()
-            st.success("✅ تم بنجاح!")
+            conn.close()
+            st.success("✅ تمت تهيئة الفترة بنجاح!")
             st.rerun()
 else:
-    p_id = active_period.iloc[0]['id']
-    p_name = active_period.iloc[0]['period_name']
-    p_start = active_period.iloc[0]['start_date']
-    p_end = active_period.iloc[0]['end_date']
+    p_id = int(active_period.iloc[0]['id'])
+    p_name = str(active_period.iloc[0]['period_name'])
+    p_start = str(active_period.iloc[0]['start_date'])
+    p_end = str(active_period.iloc[0]['end_date'])
     
     st.sidebar.markdown(f"**الشهر النشط:** `{p_name}`")
     st.sidebar.markdown(f"📅 من `{p_start}` إلى `{p_end}`")
     
-    # تحكم كامل لتعديل الفترة الحالية في أي وقت
-    with st.sidebar.expander("✏️ تعديل تفاصيل الفترة الحالية"):
+    # نموذج تعديل الفترة النشطة الحالية بشكل مباشر وفعال
+    with st.sidebar.expander("✏️ تعديل اسم وتواريخ الفترة الحالية"):
         with st.form("edit_period_form"):
             edit_name = st.text_input("اسم الشهر", value=p_name)
             try:
@@ -141,36 +142,52 @@ else:
             edit_start = st.date_input("يبدأ من", value=def_start)
             edit_end = st.date_input("ينتهي في", value=def_end)
             
-            if st.form_submit_button("حفظ تعديلات الفترة"):
+            if st.form_submit_button("حفظ التعديلات فوراً"):
                 conn.execute("UPDATE active_periods SET period_name=?, start_date=?, end_date=? WHERE id=?",
                              (edit_name, str(edit_start), str(edit_end), p_id))
                 conn.commit()
-                st.success("✅ تم التعديل بنجاح!")
+                conn.close()
+                st.success("✅ تم تحديث الفترة بنجاح!")
                 st.rerun()
 
-    if st.sidebar.button("➕ فتح شهر جديد وإغلاق الحالي"):
-        conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (p_id,))
-        conn.commit()
-        st.rerun()
+    # نموذج فتح شهر جديد (يقوم بإغلاق القديم وفتح الجديد مباشرة)
+    with st.sidebar.expander("➕ فتح شهر جديد وإغلاق الحالي"):
+        with st.form("new_period_form"):
+            new_p_name = st.text_input("اسم الشهر الجديد", value="ديسمبر 2026")
+            new_p_start = st.date_input("يبدأ من", value=datetime.now().date())
+            new_p_end = st.date_input("ينتهي في", value=datetime.now().date())
+            if st.form_submit_button("اعتماد الشهر الجديد"):
+                conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (p_id,))
+                conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,1)",
+                             (new_p_name, str(new_p_start), str(new_p_end)))
+                conn.commit()
+                conn.close()
+                st.success("✅ تم فتح الشهر الجديد بنجاح!")
+                st.rerun()
+
+conn.close()
 
 st.sidebar.markdown("---")
 
 # إدارة الفروع
+conn = get_db()
 branches_df = pd.read_sql("SELECT branch_name FROM branches", conn)
 branch_list = branches_df['branch_name'].tolist()
+conn.close()
+
 selected_branch = st.sidebar.selectbox("📍 تصفية حسب الفرع:", ["جميع الفروع"] + branch_list)
 
 new_br = st.sidebar.text_input("إضافة فرع جديد:")
 if st.sidebar.button("➕ إضافة فرع"):
     if new_br.strip():
         try:
+            conn = get_db()
             conn.execute("INSERT INTO branches (branch_name) VALUES (?)", (new_br.strip(),))
             conn.commit()
+            conn.close()
             st.rerun()
         except:
             st.sidebar.error("الفرع موجود مسبقاً")
-
-conn.close()
 
 st.sidebar.markdown("---")
 menu = st.sidebar.radio("القائمة الرئيسية:", [
@@ -207,7 +224,7 @@ elif menu == "📥 رفع ملف الحضور اليومي (تلقائي)":
     if active_period.empty:
         st.error("❌ يرجى إنشاء فترة نشطة أولاً.")
     else:
-        st.info(f"💡 الفترة الحالية مسموح لها بالرفع والتعديل في أي وقت.")
+        st.info(f"💡 الفترة الحالية ({p_name}) مسموح لها بالرفع والتعديل في أي وقت.")
         up_file = st.file_uploader("ارفع ملف الحضور اليومي (Excel)", type=["xlsx", "xls"])
         
         if up_file and st.button("⚙️ معالجة وإضافة الملف للشهر الحالي"):
@@ -240,6 +257,7 @@ elif menu == "✏️ تعديل سجلات الحضور والانصراف يد�
     if not active_period.empty:
         conn = get_db()
         df_logs = pd.read_sql("SELECT id, emp_code as 'الكود', emp_name as 'الاسم', branch_name as 'الفرع', date as 'التاريخ', check_in as 'الدخول', check_out as 'الانصراف', status as 'الحالة' FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
+        conn.close()
         if not df_logs.empty:
             st.dataframe(df_logs, use_container_width=True)
             rec_id = st.number_input("أدخل ID السجل للتعديل:", min_value=1, step=1)
@@ -250,8 +268,10 @@ elif menu == "✏️ تعديل سجلات الحضور والانصراف يد�
                     no = st.text_input("الانصراف", value=str(row.iloc[0]['الانصراف']))
                     ns = st.text_input("الحالة", value=str(row.iloc[0]['الحالة']))
                     if st.form_submit_button("حفظ التعديل"):
+                        conn = get_db()
                         conn.execute("UPDATE attendance_logs SET check_in=?, check_out=?, status=? WHERE id=?", (ni, no, ns, rec_id))
                         conn.commit()
+                        conn.close()
                         st.success("✅ تم التحديث!")
                         st.rerun()
 
