@@ -194,7 +194,7 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
     st.markdown("""
     <div class="box-container">
         <div class="box-title">تعليمات النظام الحر:</div>
-        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة. اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
+        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة (مثال: من 21/7 إلى 20/8). اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -308,7 +308,7 @@ else:
         st.markdown(f"""
         <div class="box-container">
             <div class="box-title">رفع وتحليل ملفات النظام المزدوج:</div>
-            <p style="color: #ffffff !important;">قم برفع ملف <b>Blueworks 8.xlsx</b> وملف <b>Report 8.xlsx</b> معاً لمعالجة الدمج وحساب التأخير والـ Overtime تلقائياً.</p>
+            <p style="color: #ffffff !important;">قم برفع ملف <b>Blueworks 8.xlsx</b> وملف <b>Report 8.xlsx</b> معاً لمعالجة الدمج وتصفية التواريخ من <b>{active_p_start}</b> إلى <b>{active_p_end}</b> تلقائياً.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -318,7 +318,7 @@ else:
         
         if bw_file is not None and rpt_file is not None:
             if st.button("⚙️ بدء معالجة الملفين ودمج الحضور الآن"):
-                with st.spinner("جاري المعالجة والمطابقة..."):
+                with st.spinner("جاري المعالجة والمطابقة وتصفية الفترة الزمنية..."):
                     try:
                         df_bw = pd.read_excel(bw_file)
                         df_rpt = pd.read_excel(rpt_file)
@@ -326,21 +326,47 @@ else:
                         df_bw.columns = [str(c).strip() for c in df_bw.columns]
                         df_rpt.columns = [str(c).strip() for c in df_rpt.columns]
                         
+                        # تصفية تواريخ Blueworks لتكون ضمن الفترة النشطة فقط
+                        if 'Date' in df_bw.columns:
+                            df_bw['Parsed_Date'] = pd.to_datetime(df_bw['Date'], errors='coerce')
+                            start_dt = pd.to_datetime(active_p_start)
+                            end_dt = pd.to_datetime(active_p_end)
+                            df_bw = df_bw[(df_bw['Parsed_Date'] >= start_dt) & (df_bw['Parsed_Date'] <= end_dt)]
+                        
                         file_name_label = f"ملفين ({bw_file.name} - {rpt_file.name}) بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                         
                         records_to_insert = []
                         for idx, row in df_bw.iterrows():
-                            code = str(row.iloc[0]) if pd.notna(row.iloc[0]) else str(idx)
-                            name = str(row.get('Employee Name', row.get('Name', 'موظف')))
-                            deprt = str(row.get('Branch', row.get('Deprt', 'Factory')))
+                            code = str(row.get('Code', row.iloc[0]))
+                            name = str(row.get('Employee Name', 'موظف'))
+                            deprt = str(row.get('Branch', 'Factory'))
                             date_val = str(row.get('Date', datetime.now().date()))[:10]
-                            day_name = str(row.get('اليوم', 'الإثنين'))
+                            
+                            # استخراج اسم اليوم بالعربية
+                            try:
+                                dt_obj = datetime.strptime(date_val, '%Y-%m-%d')
+                                days_map = {0: 'الإثنين', 1: 'الثلاثاء', 2: 'الأربعاء', 3: 'الخميس', 4: 'الجمعة', 5: 'السبت', 6: 'الأحد'}
+                                day_name = days_map.get(dt_obj.weekday(), 'الإثنين')
+                            except:
+                                day_name = 'الإثنين'
+                                
                             status = str(row.get('Status', 'Attend'))
                             
-                            matched_rpt = df_rpt[(df_rpt.iloc[:, 0].astype(str).str.contains(code, na=False)) & (df_rpt.iloc[:, 2].astype(str).str.contains(date_val, na=False))]
-                            c_in, c_out = "08:00 AM", "04:00 PM"
+                            # مطابقة بصمات ZK من Report 8.xlsx
+                            code_col_rpt = 'كود' if 'كود' in df_rpt.columns else df_rpt.columns[0]
+                            date_col_rpt = 'Date' if 'Date' in df_rpt.columns else df_rpt.columns[2]
+                            time_col_rpt = 'Time' if 'Time' in df_rpt.columns else df_rpt.columns[3]
+                            
+                            matched_rpt = df_rpt[(df_rpt[code_col_rpt].astype(str).str.contains(code, na=False)) & (df_rpt[date_col_rpt].astype(str).str.contains(date_val, na=False))]
+                            
+                            # الافتراضي من Blueworks أو 08:00 ص إلى 04:00 م
+                            c_in = str(row.get('Clock In Time', '08:00 AM'))
+                            c_out = str(row.get('Clock Out Time', '04:00 PM'))
+                            if pd.isna(c_in) or c_in.lower() == 'nan': c_in = "08:00 AM"
+                            if pd.isna(c_out) or c_out.lower() == 'nan': c_out = "04:00 PM"
+                            
                             if not matched_rpt.empty:
-                                t_str = str(matched_rpt.iloc[0].iloc[3])
+                                t_str = str(matched_rpt.iloc[0][time_col_rpt])
                                 times = t_str.split()
                                 if len(times) >= 2:
                                     c_in = times[0]
@@ -364,7 +390,7 @@ else:
                                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                             """, final_tuples)
                             
-                        st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {len(records_to_insert)} سجلاً إلى الفترة دون أي أخطاء!")
+                        st.success(f"✅ تمت معالجة الملفين بنجاح وتصفية {len(records_to_insert)} سجلاً للفترة من {active_p_start} إلى {active_p_end}!")
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
@@ -441,10 +467,10 @@ else:
                 
             st.dataframe(df_f, use_container_width=True, hide_index=True)
             
-            # تصدير الشيت بصيغة Excel الحقيقية (.xlsx) باستخدام openpyxl
+            # تصدير الشيت بصيغة Excel الحقيقية (.xlsx)
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_f.to_excel(writer, index=False, sheet_name='Attendance')
+                df_f.drop(columns=['id'], errors='ignore').to_excel(writer, index=False, sheet_name='Attendance')
             excel_data = output.getvalue()
             
             st.download_button(
