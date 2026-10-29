@@ -84,7 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الجداول مع الهجرة التلقائية للأعمدة
+# 2. قاعدة البيانات وإدارة الجداول
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -123,7 +123,6 @@ def init_db():
         delay TEXT
     )''')
     
-    # فحص وإضافة عمود file_id إن لم يكن موجوداً في قاعدة البيانات القديمة
     c.execute("PRAGMA table_info(attendance_logs)")
     columns = [col[1] for col in c.fetchall()]
     if 'file_id' not in columns:
@@ -323,6 +322,20 @@ else:
                 df_bw = pd.read_excel(bw_file, sheet_name=0)
                 df_rpt = pd.read_excel(rpt_file, sheet_name=0)
                 
+                # توحيد وتصحيح أسماء الأعمدة بمرونة
+                df_bw.columns = [str(c).strip() for c in df_bw.columns]
+                df_rpt.columns = [str(c).strip() for c in df_rpt.columns]
+                
+                code_col_bw = 'Code' if 'Code' in df_bw.columns else ('كود' if 'كود' in df_bw.columns else df_bw.columns[0])
+                name_col_bw = 'Employee Name' if 'Employee Name' in df_bw.columns else ('Name' if 'Name' in df_bw.columns else df_bw.columns[1])
+                branch_col_bw = 'Branch' if 'Branch' in df_bw.columns else ('deprt' if 'deprt' in df_bw.columns else df_bw.columns[2])
+                date_col_bw = 'Date' if 'Date' in df_bw.columns else df_bw.columns[3]
+                status_col_bw = 'Status' if 'Status' in df_bw.columns else df_bw.columns[-1]
+                
+                code_col_rpt = 'كود' if 'كود' in df_rpt.columns else ('Code' if 'Code' in df_rpt.columns else df_rpt.columns[0])
+                date_col_rpt = 'Date' if 'Date' in df_rpt.columns else df_rpt.columns[2]
+                time_col_rpt = 'Time' if 'Time' in df_rpt.columns else df_rpt.columns[3]
+                
                 conn = get_db()
                 file_name_label = f"ملفين مرفقين بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                 c_cursor = conn.cursor()
@@ -331,18 +344,18 @@ else:
                 f_id = c_cursor.lastrowid
                 
                 count = 0
-                for idx, row in df_bw.dropna(subset=['Code']).iterrows():
-                    code = str(row.get('Code'))
-                    name = str(row.get('Employee Name', 'موظف'))
-                    deprt = str(row.get('Branch', 'Factory'))
-                    date_val = str(row.get('Date', datetime.now().date()))[:10]
+                for idx, row in df_bw.dropna(subset=[code_col_bw]).iterrows():
+                    code = str(row.get(code_col_bw))
+                    name = str(row.get(name_col_bw, 'موظف'))
+                    deprt = str(row.get(branch_col_bw, 'Factory'))
+                    date_val = str(row.get(date_col_bw, datetime.now().date()))[:10]
                     day_name = str(row.get('اليوم', 'الإثنين'))
-                    status = str(row.get('Status', 'Attend'))
+                    status = str(row.get(status_col_bw, 'Attend'))
                     
-                    matched_rpt = df_rpt[(df_rpt['كود'].astype(str).str.contains(code)) & (df_rpt['Date'].astype(str).str.contains(date_val))]
+                    matched_rpt = df_rpt[(df_rpt[code_col_rpt].astype(str).str.contains(code, na=False)) & (df_rpt[date_col_rpt].astype(str).str.contains(date_val, na=False))]
                     c_in, c_out = "08:00 AM", "04:00 PM"
                     if not matched_rpt.empty:
-                        t_str = str(matched_rpt.iloc[0]['Time'])
+                        t_str = str(matched_rpt.iloc[0][time_col_rpt])
                         times = t_str.split()
                         if len(times) >= 2:
                             c_in = times[0]
