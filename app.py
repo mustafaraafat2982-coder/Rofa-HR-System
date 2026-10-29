@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (السكري المطفي)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (السكري المطفي والنصوص البيضاء)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -26,7 +26,7 @@ st.markdown("""
     /* الهيدر والعناوين الكبرى */
     .main-header { 
         background-color: #4a2e18 !important; /* بني غامق */
-        color: #000000 !important; 
+        color: #ffffff !important; /* أبيض داخل الهيدر */
         font-size: 22px !important; 
         font-weight: 900 !important; 
         text-align: center; 
@@ -38,22 +38,22 @@ st.markdown("""
     }
     
     .main-header span {
-        color: #000000 !important;
+        color: #ffffff !important;
         font-weight: 900 !important;
     }
 
-    /* المستطيلات المحيطة بالعناوين بلون بني غامق */
+    /* المستطيلات المحيطة بالعناوين بلون بني غامق والنصوص بالبيض */
     .box-container {
         background-color: #4a2e18;
         border: 2px solid #3d2616;
         padding: 20px;
         border-radius: 10px;
         margin-bottom: 20px;
-        color: #ffffff;
+        color: #ffffff !important;
     }
     
     .box-title {
-        color: #000000 !important;
+        color: #ffffff !important;
         font-size: 18px !important;
         font-weight: 900 !important;
         margin-bottom: 10px;
@@ -74,6 +74,11 @@ st.markdown("""
     
     /* تنسيق النصوص العامة */
     p, span, label, div { color: #2c221e; font-weight: bold; }
+    
+    /* تنسيق النصوص داخل الكيانات البنية لتكون بيضاء */
+    .box-container p, .box-container span, .box-container label {
+        color: #ffffff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -132,7 +137,7 @@ conn.close()
 # القائمة الجانبية الرئيسية
 st.sidebar.markdown("### 🏢 لوحة التحكم والإدارة")
 main_menu = st.sidebar.radio("القائمة الرئيسية:", [
-    "📅 إدارة شهور السنة والفترات",
+    "📅 إدارة شهور السنة والفترات المخصصة",
     "📊 الداشبورد والمؤشرات",
     "📥 رفع وتحليل ملفات الحضور (ملفين)",
     "✏️ التعديل اليدوي",
@@ -143,13 +148,13 @@ main_menu = st.sidebar.radio("القائمة الرئيسية:", [
 # 4. الشاشات والأقسام البرمجية
 # ==========================================
 
-if main_menu == "📅 إدارة شهور السنة والفترات":
-    st.markdown('<div class="main-header"><span style="color:black !important;">📅 إدارة شهور السنة وفترات التشغيل</span></div>', unsafe_allow_html=True)
+if main_menu == "📅 إدارة شهور السنة والفترات المخصصة":
+    st.markdown('<div class="main-header"><span>📅 إدارة شهور السنة وتحديد فترات التشغيل بحرية تامة</span></div>', unsafe_allow_html=True)
     
     st.markdown("""
     <div class="box-container">
-        <div class="box-title" style="color:black !important;">تعليمات النظام:</div>
-        اختر الشهر المطلوب. إذا كانت الفترة مسجلة يمكنك الضغط على <b>تشغيل الفترة</b>، وإذا لم تكن مسجلة قم بتحديد تاريخ البداية والنهاية واعتمادها لتبدأ في استقبال ملفات الحضور. السيستم لن يعمل بدون تفعيل الفترة!
+        <div class="box-title">تعليمات النظام الحر:</div>
+        اختر الشهر المطلوب لتحديد أي أيام بداية ونهاية تريدها (مثال: من 21 في الشهر إلى 21 في الشهر التالي). يمكنك تعديل التواريخ بحرية مطلقة واعتمادها، ثم الضغط على <b>تشغيل الفترة</b> لتبدأ في استقبال ملفات الحضور. السيستم لن يعمل بدون تفعيل الفترة!
     </div>
     """, unsafe_allow_html=True)
     
@@ -163,8 +168,13 @@ if main_menu == "📅 إدارة شهور السنة والفترات":
             conn.close()
             
             is_currently_active = False
+            saved_start = str(datetime.now().date())
+            saved_end = str(datetime.now().date())
+            
             if not m_data.empty:
                 is_currently_active = bool(m_data.iloc[0]['is_active'])
+                saved_start = str(m_data.iloc[0]['start_date'])
+                saved_end = str(m_data.iloc[0]['end_date'])
                 
             status_text = "🟢 مفعلة ونشطة" if is_currently_active else "⚪ متوقفة"
             
@@ -172,23 +182,42 @@ if main_menu == "📅 إدارة شهور السنة والفترات":
             <div style="background-color: #dcd6d0; border: 2px solid {'#2ecc71' if is_currently_active else '#4a2e18'}; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
                 <h4 style="color: black !important; font-weight: 900;">{m} 2026</h4>
                 <p style="color: {'#166534' if is_currently_active else '#2c221e'}; font-weight: bold;">{status_text}</p>
+                <p style="color: #4a2e18; font-size: 12px; font-weight: bold;">من: {saved_start}<br>إلى: {saved_end}</p>
             </div>
             """, unsafe_allow_html=True)
             
-            if m_data.empty:
-                with st.form(f"form_create_{m}"):
-                    st.markdown(f"<span style='color:black;'>إنشاء فترة {m}</span>", unsafe_allow_html=True)
-                    s_date = st.date_input(f"من تاريخ_{m}", value=datetime.now().date())
-                    e_date = st.date_input(f"إلى تاريخ_{m}", value=datetime.now().date())
-                    if st.form_submit_button(f"حفظ وفتح {m}"):
-                        conn = get_db()
+            # نموذج إنشاء أو تعديل أيام الفترة بحرية مطلقة
+            with st.form(f"form_create_{m}"):
+                st.markdown(f"<span style='color:black; font-weight:bold;'>تحديد أيام {m}</span>", unsafe_allow_html=True)
+                
+                try:
+                    default_s = datetime.strptime(saved_start, "%Y-%m-%d").date()
+                except:
+                    default_s = datetime.now().date()
+                    
+                try:
+                    default_e = datetime.strptime(saved_end, "%Y-%m-%d").date()
+                except:
+                    default_e = datetime.now().date()
+                    
+                s_date = st.date_input(f"بداية الفترة_{m}", value=default_s, key=f"s_{m}")
+                e_date = st.date_input(f"نهاية الفترة_{m}", value=default_e, key=f"e_{m}")
+                
+                btn_label = "تحديث وتعديل التواريخ" if not m_data.empty else f"حفظ وفتح {m}"
+                if st.form_submit_button(btn_label):
+                    conn = get_db()
+                    if m_data.empty:
                         conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,0)",
                                      (f"{m} 2026", str(s_date), str(e_date)))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"تم حفظ فترة {m} بنجاح!")
-                        st.rerun()
-            else:
+                    else:
+                        conn.execute("UPDATE active_periods SET start_date=?, end_date=? WHERE period_name LIKE ?",
+                                     (str(s_date), str(e_date), f"%{m}%"))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"تم تحديث تواريخ فترة {m} بنجاح!")
+                    st.rerun()
+            
+            if not m_data.empty:
                 p_db_id = int(m_data.iloc[0]['id'])
                 if is_currently_active:
                     if st.button(f"⏹️ إيقاف الفترة {m}", key=f"stop_{m}"):
@@ -209,17 +238,19 @@ if main_menu == "📅 إدارة شهور السنة والفترات":
                         st.rerun()
 
 elif active_period.empty or active_period.iloc[0]['is_active'] == 0:
-    st.markdown('<div class="main-header"><span style="color:black !important;">⚠️ تنبيه هامة: لا توجد فترة نشطة حالياً!</span></div>', unsafe_allow_html=True)
-    st.error("❌ السيستم لا يعمل بدون تحديد وتشغيل فترة من صفحة (إدارة شهور السنة والفترات) أعلاه. يرجى الذهاب لتفعيل شهر أولاً.")
+    st.markdown('<div class="main-header"><span>⚠️ تنبيه هام: لا توجد فترة نشطة حالياً!</span></div>', unsafe_allow_html=True)
+    st.error("❌ السيستم لا يعمل بدون تحديد وتشغيل فترة من صفحة (إدارة شهور السنة والفترات المخصصة) أعلاه. يرجى الذهاب لتفعيل شهر أولاً.")
 
 else:
     active_p_id = int(active_period.iloc[0]['id'])
     active_p_name = str(active_period.iloc[0]['period_name'])
+    active_p_start = str(active_period.iloc[0]['start_date'])
+    active_p_end = str(active_period.iloc[0]['end_date'])
     
-    st.sidebar.success(f"📌 الفترة النشطة حالياً: {active_p_name}")
+    st.sidebar.success(f"📌 الفترة النشطة: {active_p_name}\n(من {active_p_start} إلى {active_p_end})")
     
     if main_menu == "📊 الداشبورد والمؤشرات":
-        st.markdown(f'<div class="main-header"><span style="color:black !important;">📊 لوحة القيادة والمؤشرات الحية ({active_p_name})</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-header"><span>📊 لوحة القيادة والمؤشرات الحية ({active_p_name} | من {active_p_start} إلى {active_p_end})</span></div>', unsafe_allow_html=True)
         
         conn = get_db()
         df_logs = pd.read_sql("SELECT * FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
@@ -230,7 +261,7 @@ else:
             c1, c2, c3 = st.columns(3)
             c1.metric("إجمالي السجلات", len(df_logs))
             c2.metric("عدد الموظفين", df_logs['emp_id'].nunique() if not df_logs.empty else 0)
-            c3.metric("حالة الفترة", "نشطة وتعمل", delta="جاهز")
+            c3.metric("حالة الفترة", "نشطة وتعمل بحرية التواريخ", delta="جاهز")
         with h_tab2:
             if not df_logs.empty and 'deprt' in df_logs.columns:
                 factory_df = df_logs[df_logs['deprt'].str.lower() == 'factory']
@@ -243,12 +274,12 @@ else:
                 st.bar_chart(df_logs['deprt'].value_counts())
 
     elif main_menu == "📥 رفع وتحليل ملفات الحضور (ملفين)":
-        st.markdown(f'<div class="main-header"><span style="color:black !important;">📥 رفع وتحليل ملفات الحضور للفترة: {active_p_name}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-header"><span>📥 رفع وتحليل ملفات الحضور للفترة المخصصة: {active_p_name}</span></div>', unsafe_allow_html=True)
         
-        st.markdown("""
+        st.markdown(f"""
         <div class="box-container">
-            <div class="box-title" style="color:black !important;">رفع ملفات النظام المزدوج:</div>
-            قم برفع ملف <b>BLUEWORKS</b> الخاص بالموظفين والأقسام، وملف <b>08.Report (ZK)</b> الخاص بسجلات البصمة اليومية ليقوم السيستم بدمجها وتحليلها تلقائياً.
+            <div class="box-title">رفع ملفات النظام المزدوج (نطاق الفترة: {active_p_start} إلى {active_p_end}):</div>
+            قم برفع ملف <b>BLUEWORKS</b> الخاص بالموظفين والأقسام، وملف <b>08.Report (ZK)</b> الخاص بسجلات البصمة اليومية ليقوم السيستم بمعالجتها ودمجها تلقائياً.
         </div>
         """, unsafe_allow_html=True)
         
@@ -282,12 +313,12 @@ else:
                     count += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً للفترة الحالية!")
+                st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً للفترة المخصصة!")
             except Exception as e:
                 st.error(f"حدث خطأ أثناء معالجة الملفات: {e}")
 
     elif main_menu == "✏️ التعديل اليدوي":
-        st.markdown(f'<div class="main-header"><span style="color:black !important;">✏️ التعديل اليدوي على السجلات</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-header"><span>✏️ التعديل اليدوي على السجلات</span></div>', unsafe_allow_html=True)
         conn = get_db()
         df_logs = pd.read_sql("SELECT id, emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
         conn.close()
@@ -309,7 +340,7 @@ else:
                         st.rerun()
 
     elif main_menu == "📋 شيت الحضور النهائي":
-        st.markdown(f'<div class="main-header"><span style="color:black !important;">📋 شيت الحضور النهائي والتصدير ({active_p_name})</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="main-header"><span>📋 شيت الحضور النهائي والتصدير ({active_p_name})</span></div>', unsafe_allow_html=True)
         conn = get_db()
         q = "SELECT emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?"
         df_f = pd.read_sql(q, conn, params=[active_p_id])
