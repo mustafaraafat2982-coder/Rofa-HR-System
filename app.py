@@ -79,7 +79,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الاتصال الآمن (ضبط مصنع تلقائي)
+# 2. قاعدة البيانات وإدارة الاتصال الآمن
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -126,7 +126,6 @@ def init_db(factory_reset=False):
             delay TEXT
         )''')
 
-# تهيئة قاعدة البيانات بدون بيانات مسجلة (ضبط مصنع نظيف)
 if not os.path.exists(DB_PATH):
     init_db(factory_reset=True)
 else:
@@ -185,7 +184,7 @@ selected_tab = st.radio("القائمة الرئيسية:", nav_tabs, horizontal
 st.markdown("<hr style='border: 2px solid #4a2e18; margin: 20px 0;'>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. محتوى الشاشات
+# 5. منطق الشاشات والتبويبات
 # ==========================================
 
 if selected_tab == "📅 إدارة الفترات المخصصة":
@@ -257,6 +256,20 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
                             conn.execute("UPDATE active_periods SET is_active=1 WHERE id=?", (pid,))
                         st.success("تم التشغيل بنجاح!")
                         st.rerun()
+
+elif selected_tab == "⚙️ ضبط مصنع (إعادة تعيين)":
+    st.markdown('<div class="main-header"><span>⚙️ ضبط مصنع وإعادة تعيين النظام بالكامل</span></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="box-container">
+        <div class="box-title">تحذير هام:</div>
+        <p style="color: #ffffff !important;">الضغط على الزر أدناه سيؤدي إلى مسح جميع السجلات، الفترات، والملفات المرفوعة نهائياً والعودة بالنظام إلى نقطة الصفر (ضبط مصنع).</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("⚠️ تأكيد وعمل ضبط مصنع شامل للنظام"):
+        init_db(factory_reset=True)
+        st.success("✅ تم عمل ضبط مصنع للنظام بنجاح وتفريغ كافة البيانات! يمكنك الآن البدء من جديد.")
+        st.rerun()
 
 elif active_period.empty or active_period.iloc[0]['is_active'] == 0:
     st.markdown('<div class="main-header"><span>⚠️ تنبيه: لا توجد فترة نشطة حالياً! يرجى تفعيل فترة من القائمة أعلاه.</span></div>', unsafe_allow_html=True)
@@ -430,17 +443,3 @@ else:
             st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv, f"Attendance_{active_p_name}.csv", "text/csv")
         else:
             st.info("الشيت فارغ لهذه الفترة. قم برفع الملفات أولاً.")
-
-elif selected_tab == "⚙️ ضبط مصنع (إعادة تعيين)":
-    st.markdown('<div class="main-header"><span>⚙️ ضبط مصنع وإعادة تعيين النظام بالكامل</span></div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="box-container">
-        <div class="box-title">تحذير هام:</div>
-        <p style="color: #ffffff !important;">الضغط على الزر أدناه سيؤدي إلى مسح جميع السجلات، الفترات، والملفات المرفوعة نهائياً والعودة بالنظام إلى نقطة الصفر (ضبط مصنع).</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("⚠️ تأكيد وعمل ضبط مصنع شامل للنظام"):
-        init_db(factory_reset=True)
-        st.success("✅ تم عمل ضبط مصنع للنظام بنجاح وتفريغ كافة البيانات! يمكنك الآن البدء من جديد.")
-        st.rerun()
