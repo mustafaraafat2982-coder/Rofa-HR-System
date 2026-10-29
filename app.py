@@ -47,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الشهور والفروع
+# 2. قاعدة البيانات وإدارة الشهور والفروع (مع إصلاح الهيكلة التلقائية)
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -55,7 +55,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # جدول إدارة الفترات الشهرية (بداية ونهاية الشهر)
+    # جدول إدارة الفترات الشهرية
     c.execute('''CREATE TABLE IF NOT EXISTS active_periods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_name TEXT NOT NULL,
@@ -80,10 +80,15 @@ def init_db():
         date TEXT,
         check_in TEXT,
         check_out TEXT,
-        status TEXT,
-        FOREIGN KEY(period_id) REFERENCES active_periods(id)
+        status TEXT
     )''')
     
+    # التحقق من وجود عمود period_id في attendance_logs وإضافته إن لم يكن موجوداً (تجنب أخطاء الجداول القديمة)
+    c.execute("PRAGMA table_info(attendance_logs)")
+    columns = [col[1] for col in c.fetchall()]
+    if 'period_id' not in columns:
+        c.execute("ALTER TABLE attendance_logs ADD COLUMN period_id INTEGER")
+        
     conn.commit()
     conn.close()
 
