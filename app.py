@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (السكري المطفي والنصوص البيضاء)
+# 1. إعدادات الصفحة والتصميم (السكري المطفي والنصوص البيضاء داخل المربعات البنية)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -26,7 +26,7 @@ st.markdown("""
     /* الهيدر والعناوين الكبرى */
     .main-header { 
         background-color: #4a2e18 !important; /* بني غامق */
-        color: #ffffff !important; /* أبيض داخل الهيدر */
+        color: #ffffff !important; 
         font-size: 22px !important; 
         font-weight: 900 !important; 
         text-align: center; 
@@ -37,18 +37,22 @@ st.markdown("""
         border: 2px solid #3d2616;
     }
     
-    .main-header span {
+    .main-header span, .main-header div, .main-header p {
         color: #ffffff !important;
         font-weight: 900 !important;
     }
 
-    /* المستطيلات المحيطة بالعناوين بلون بني غامق والنصوص بالبيض */
-    .box-container {
-        background-color: #4a2e18;
-        border: 2px solid #3d2616;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
+    /* المستطيلات المحيطة بالعناوين بلون بني غامق والنصوص بالبيض حصرياً */
+    .box-container, div.stMarkdown div.box-container {
+        background-color: #4a2e18 !important;
+        border: 2px solid #3d2616 !important;
+        padding: 20px !important;
+        border-radius: 10px !important;
+        margin-bottom: 20px !important;
+        color: #ffffff !important;
+    }
+    
+    .box-container *, .box-container p, .box-container span, .box-container div, .box-container b, .box-container strong {
         color: #ffffff !important;
     }
     
@@ -72,18 +76,13 @@ st.markdown("""
     
     div[data-testid="stSidebar"] { background-color: #DFDBD6 !important; border-left: 1px solid #d0ccc7; }
     
-    /* تنسيق النصوص العامة */
+    /* تنسيق النصوص العامة خارج المربعات */
     p, span, label, div { color: #2c221e; font-weight: bold; }
-    
-    /* تنسيق النصوص داخل الكيانات البنية لتكون بيضاء */
-    .box-container p, .box-container span, .box-container label {
-        color: #ffffff !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الشهور والفترات
+# 2. قاعدة البيانات وإدارة الجداول والتحديث التلقائي للأعمدة
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -119,6 +118,17 @@ def init_db():
         delay TEXT
     )''')
     
+    # تصحيح وإضافة الأعمدة تلقائياً إذا كانت مفقودة في الجداول القديمة
+    c.execute("PRAGMA table_info(attendance_logs)")
+    columns = [col[1] for col in c.fetchall()]
+    if 'emp_code' in columns and 'emp_id' not in columns:
+        c.execute("ALTER TABLE attendance_logs RENAME COLUMN emp_code TO emp_id")
+    if 'emp_id' not in columns:
+        try:
+            c.execute("ALTER TABLE attendance_logs ADD COLUMN emp_id TEXT")
+        except:
+            pass
+        
     conn.commit()
     conn.close()
 
@@ -186,7 +196,6 @@ if main_menu == "📅 إدارة شهور السنة والفترات المخص
             </div>
             """, unsafe_allow_html=True)
             
-            # نموذج إنشاء أو تعديل أيام الفترة بحرية مطلقة
             with st.form(f"form_create_{m}"):
                 st.markdown(f"<span style='color:black; font-weight:bold;'>تحديد أيام {m}</span>", unsafe_allow_html=True)
                 
