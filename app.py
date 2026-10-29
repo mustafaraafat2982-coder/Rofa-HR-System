@@ -402,14 +402,14 @@ else:
     elif selected_tab == "✏️ التعديل اليدوي":
         st.markdown(f'<div class="main-header"><span>✏️ التعديل اليدوي على السجلات</span></div>', unsafe_allow_html=True)
         with get_db() as conn:
-            df_logs = pd.read_sql("SELECT id, emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
+            df_logs = pd.read_sql("SELECT id, emp_id as 'الكود', emp_name as 'اسم الموظف', deprt as 'الفرع/القسم', date as 'التاريخ', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[active_p_id])
         
         search_edit = st.text_input("🔍 بحث بالاسم أو الكود للتعديل:")
         if search_edit:
-            df_logs = df_logs[df_logs['NAME'].str.contains(search_edit, na=False) | df_logs['ID'].str.contains(search_edit, na=False)]
+            df_logs = df_logs[df_logs['اسم الموظف'].str.contains(search_edit, na=False) | df_logs['الكود'].str.contains(search_edit, na=False)]
             
         if not df_logs.empty:
-            st.dataframe(df_logs, use_container_width=True)
+            st.dataframe(df_logs, use_container_width=True, hide_index=True)
             rec_id = st.number_input("أدخل ID السجل للتعديل:", min_value=1, step=1)
             row = df_logs[df_logs['id'] == rec_id]
             if not row.empty:
@@ -426,19 +426,19 @@ else:
     elif selected_tab == "📋 شيت الحضور النهائي":
         st.markdown(f'<div class="main-header"><span>📋 شيت الحضور النهائي والتصدير ({active_p_name})</span></div>', unsafe_allow_html=True)
         with get_db() as conn:
-            q = "SELECT emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف', delay as 'التأخير', overtime as 'الإضافي' FROM attendance_logs WHERE period_id=?"
+            q = "SELECT id, emp_id as 'الكود', emp_name as 'اسم الموظف', deprt as 'الفرع/القسم', date as 'التاريخ', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف', delay as 'التأخير', overtime as 'الإضافي' FROM attendance_logs WHERE period_id=?"
             df_f = pd.read_sql(q, conn, params=[active_p_id])
         
         if not df_f.empty:
-            if 'Date' in df_f.columns:
-                df_f['Date_Parsed'] = pd.to_datetime(df_f['Date'], errors='coerce')
-                df_f = df_f.sort_values(by=['ID', 'Date_Parsed']).drop(columns=['Date_Parsed'])
+            if 'التاريخ' in df_f.columns:
+                df_f['Date_Parsed'] = pd.to_datetime(df_f['التاريخ'], errors='coerce')
+                df_f = df_f.sort_values(by=['الكود', 'Date_Parsed']).drop(columns=['Date_Parsed'])
                 
             search_name = st.text_input("🔍 بحث شامل بالكود أو الاسم:")
             if search_name:
-                df_f = df_f[df_f['NAME'].str.contains(search_name, na=False) | df_f['ID'].str.contains(search_name, na=False)]
+                df_f = df_f[df_f['اسم الموظف'].str.contains(search_name, na=False) | df_f['الكود'].str.contains(search_name, na=False)]
                 
-            st.dataframe(df_f, use_container_width=True)
+            st.dataframe(df_f, use_container_width=True, hide_index=True)
             csv = df_f.to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv, f"Attendance_{active_p_name}.csv", "text/csv")
         else:
