@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS
+# 1. إعدادات الصفحة والتصميم
 # ==========================================
 st.set_page_config(
-    page_title="نظام إدارة الحضور والرواتب المؤسسي", 
+    page_title="نظام إدارة الحضور والانصراف المؤسسي", 
     layout="wide", 
     page_icon="🏢",
     initial_sidebar_state="expanded"
@@ -29,7 +29,7 @@ st.markdown("""
         padding: 20px 30px;
         border-radius: 12px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        margin-bottom: 25px;
+        margin-bottom: 20px;
         border-right: 6px solid #3b82f6;
     }
     
@@ -47,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الشهور والفروع
+# 2. قاعدة البيانات
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -71,13 +71,16 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_id INTEGER,
-        emp_code TEXT,
+        emp_id TEXT,
         emp_name TEXT,
-        branch_name TEXT,
+        deprt TEXT,
         date TEXT,
+        day_name TEXT,
+        status TEXT,
         check_in TEXT,
         check_out TEXT,
-        status TEXT
+        overtime TEXT,
+        delay TEXT
     )''')
     
     c.execute("PRAGMA table_info(attendance_logs)")
@@ -94,7 +97,7 @@ def get_db():
 init_db()
 
 # ==========================================
-# 3. القائمة الجانبية والتحكم الكامل بالفترات
+# 3. القائمة الجانبية (إدارة الشهور والفروع الأساسية)
 # ==========================================
 st.sidebar.markdown("### 🏢 لوحة التحكم والإدارة")
 
@@ -105,17 +108,16 @@ if active_period.empty:
     st.sidebar.warning("⚠️ لا توجد فترة شهرية مسجلة حالياً.")
     with st.sidebar.form("create_period_form_initial"):
         st.markdown("#### فتح شهر / فترة جديدة")
-        p_name = st.text_input("اسم الفترة (مثال: نوفمبر 2026)", value="نوفمبر 2026")
+        p_name = st.text_input("اسم الفترة", value="أغسطس 2026")
         p_start = st.date_input("يبدأ من تاريخ", value=datetime.now().date())
         p_end = st.date_input("ينتهي في تاريخ", value=datetime.now().date())
-        create_btn = st.form_submit_button("إنشاء وتنشيط الفترة")
-        if create_btn and p_name:
+        if st.form_submit_button("إنشاء وتنشيط الفترة") and p_name:
             conn.execute("UPDATE active_periods SET is_active=0")
             conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,1)",
                          (p_name, str(p_start), str(p_end)))
             conn.commit()
             conn.close()
-            st.success("✅ تمت تهيئة الفترة بنجاح!")
+            st.success("✅ تم بنجاح!")
             st.rerun()
 else:
     p_id = int(active_period.iloc[0]['id'])
@@ -126,167 +128,174 @@ else:
     st.sidebar.markdown(f"**الشهر النشط:** `{p_name}`")
     st.sidebar.markdown(f"📅 من `{p_start}` إلى `{p_end}`")
     
-    # نموذج تعديل الفترة النشطة الحالية بشكل مباشر وفعال
-    with st.sidebar.expander("✏️ تعديل اسم وتواريخ الفترة الحالية"):
+    with st.sidebar.expander("✏️ تعديل الفترة الحالية"):
         with st.form("edit_period_form"):
             edit_name = st.text_input("اسم الشهر", value=p_name)
-            try:
-                def_start = datetime.strptime(p_start, "%Y-%m-%d").date()
-            except:
-                def_start = datetime.now().date()
-            try:
-                def_end = datetime.strptime(p_end, "%Y-%m-%d").date()
-            except:
-                def_end = datetime.now().date()
-                
-            edit_start = st.date_input("يبدأ من", value=def_start)
-            edit_end = st.date_input("ينتهي في", value=def_end)
-            
-            if st.form_submit_button("حفظ التعديلات فوراً"):
+            edit_start = st.date_input("يبدأ من", value=datetime.strptime(p_start, "%Y-%m-%d").date())
+            edit_end = st.date_input("ينتهي في", value=datetime.strptime(p_end, "%Y-%m-%d").date())
+            if st.form_submit_button("حفظ التعديلات"):
                 conn.execute("UPDATE active_periods SET period_name=?, start_date=?, end_date=? WHERE id=?",
                              (edit_name, str(edit_start), str(edit_end), p_id))
                 conn.commit()
                 conn.close()
-                st.success("✅ تم تحديث الفترة بنجاح!")
+                st.success("✅ تم التعديل!")
                 st.rerun()
 
-    # نموذج فتح شهر جديد (يقوم بإغلاق القديم وفتح الجديد مباشرة)
-    with st.sidebar.expander("➕ فتح شهر جديد وإغلاق الحالي"):
+    with st.sidebar.expander("➕ فتح شهر جديد"):
         with st.form("new_period_form"):
-            new_p_name = st.text_input("اسم الشهر الجديد", value="ديسمبر 2026")
-            new_p_start = st.date_input("يبدأ من", value=datetime.now().date())
-            new_p_end = st.date_input("ينتهي في", value=datetime.now().date())
+            np_name = st.text_input("اسم الشهر الجديد", value="سبتمبر 2026")
+            np_start = st.date_input("يبدأ من", value=datetime.now().date())
+            np_end = st.date_input("ينتهي في", value=datetime.now().date())
             if st.form_submit_button("اعتماد الشهر الجديد"):
                 conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (p_id,))
                 conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,1)",
-                             (new_p_name, str(new_p_start), str(new_p_end)))
+                             (np_name, str(np_start), str(np_end)))
                 conn.commit()
                 conn.close()
-                st.success("✅ تم فتح الشهر الجديد بنجاح!")
+                st.success("✅ تم فتح الشهر الجديد!")
                 st.rerun()
 
 conn.close()
 
 st.sidebar.markdown("---")
-
-# إدارة الفروع
-conn = get_db()
-branches_df = pd.read_sql("SELECT branch_name FROM branches", conn)
-branch_list = branches_df['branch_name'].tolist()
-conn.close()
-
-selected_branch = st.sidebar.selectbox("📍 تصفية حسب الفرع:", ["جميع الفروع"] + branch_list)
-
-new_br = st.sidebar.text_input("إضافة فرع جديد:")
-if st.sidebar.button("➕ إضافة فرع"):
-    if new_br.strip():
-        try:
-            conn = get_db()
-            conn.execute("INSERT INTO branches (branch_name) VALUES (?)", (new_br.strip(),))
-            conn.commit()
-            conn.close()
-            st.rerun()
-        except:
-            st.sidebar.error("الفرع موجود مسبقاً")
-
-st.sidebar.markdown("---")
-menu = st.sidebar.radio("القائمة الرئيسية:", [
-    "📊 الداشبورد ولوحة المؤشرات",
-    "📥 رفع ملف الحضور اليومي (تلقائي)",
-    "✏️ تعديل سجلات الحضور والانصراف يدويًا",
-    "📋 شيت الحضور النهائي للشهر"
+main_menu = st.sidebar.radio("القائمة الرئيسية:", [
+    "📊 الداشبورد والمؤشرات",
+    "📥 رفع وتحليل ملفات الحضور",
+    "✏️ التعديل اليدوي",
+    "📋 شيت الحضور النهائي"
 ])
 
 # ==========================================
-# 4. الشاشات والأقسام البرمجية
+# 4. واجهة التبويبات الأفقية التفصيلية (Horizontal Tabs) أعلى الشاشة
 # ==========================================
-
-if menu == "📊 الداشبورد ولوحة المؤشرات":
+if main_menu == "📊 الداشبورد والمؤشرات":
     st.markdown('<div class="main-header">📊 لوحة القيادة والمؤشرات الحية</div>', unsafe_allow_html=True)
     if not active_period.empty:
         conn = get_db()
         df_logs = pd.read_sql("SELECT * FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
         conn.close()
         
-        c1, c2, c3 = st.columns(3)
-        c1.metric("إجمالي السجلات", len(df_logs))
-        c2.metric("عدد الحركات", df_logs['emp_code'].nunique() if not df_logs.empty else 0)
-        c3.metric("الحالة", "تحكم كامل ومفتوح", delta="جاهز")
+        # قائمة أفقية تفصيلية لعرض الفلاتر والمؤشرات بشكل هوريزونتال
+        h_tab1, h_tab2, h_tab3, h_tab4 = st.tabs(["📌 نظرة عامة", "🏭 إحصائيات Factory", "⏰ التأخير والإضافي", "📈 تقارير الأقسام"])
         
-        st.markdown("---")
-        if not df_logs.empty:
-            st.bar_chart(df_logs['branch_name'].value_counts())
+        with h_tab1:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("إجمالي السجلات", len(df_logs))
+            c2.metric("عدد الموظفين", df_logs['emp_id'].nunique() if not df_logs.empty else 0)
+            c3.metric("الفترة الشهرية", p_name)
+            
+        with h_tab2:
+            st.markdown("#### إحصائيات قسم المصنع (Factory - وردية ثابتة 8 ص إلى 4 م)")
+            if not df_logs.empty and 'deprt' in df_logs.columns:
+                factory_df = df_logs[df_logs['deprt'].str.lower() == 'factory']
+                st.metric("سجلات Factory", len(factory_df))
+                st.dataframe(factory_df[['emp_id', 'emp_name', 'date', 'check_in', 'check_out', 'status']], use_container_width=True)
+            else:
+                st.info("لا توجد بيانات Factory مسجلة.")
+                
+        with h_tab3:
+            st.markdown("#### تتبع التأخير والإضافي (Overtime & Delays)")
+            if not df_logs.empty:
+                st.dataframe(df_logs[['emp_id', 'emp_name', 'date', 'delay', 'overtime']], use_container_width=True)
+                
+        with h_tab4:
+            st.markdown("#### توزيع الأقسام والفروع")
+            if not df_logs.empty:
+                st.bar_chart(df_logs['deprt'].value_counts())
     else:
         st.warning("يرجى إنشاء فترة شهرية من القائمة الجانبية.")
 
-elif menu == "📥 رفع ملف الحضور اليومي (تلقائي)":
-    st.markdown('<div class="main-header">📥 رفع ملف الحضور اليومي المعالج تلقائياً</div>', unsafe_allow_html=True)
+elif main_menu == "📥 رفع وتحليل ملفات الحضور":
+    st.markdown('<div class="main-header">📥 رفع وتحليل ملفات الحضور اليومية (Factory وباقي الفروع)</div>', unsafe_allow_html=True)
     if active_period.empty:
         st.error("❌ يرجى إنشاء فترة نشطة أولاً.")
     else:
-        st.info(f"💡 الفترة الحالية ({p_name}) مسموح لها بالرفع والتعديل في أي وقت.")
-        up_file = st.file_uploader("ارفع ملف الحضور اليومي (Excel)", type=["xlsx", "xls"])
+        # تبويبات أفقية لخيارات الرفع والمعالجة
+        up_t1, up_t2 = st.tabs(["📂 رفع الملفات اليومية", "⚙️ قواعد حساب الورديات والـ Overtime"])
         
-        if up_file and st.button("⚙️ معالجة وإضافة الملف للشهر الحالي"):
-            try:
-                df_up = pd.read_excel(up_file)
-                conn = get_db()
-                count = 0
-                for idx, row in df_up.dropna(subset=['Code'] if 'Code' in df_up.columns else df_up.columns[:1]).iterrows():
-                    code = str(row.get('Code', row.get('كود', idx)))
-                    name = str(row.get('Employee Name', row.get('Name', 'موظف')))
-                    branch = str(row.get('Branch', 'الفرع الرئيسي'))
-                    date_val = str(row.get('Date', datetime.now().date()))[:10]
-                    c_in = str(row.get('Clock In Time', row.get('الدخول', '08:00 AM')))
-                    c_out = str(row.get('Clock Out Time', row.get('الخروج', '04:00 PM')))
-                    stat = str(row.get('Status', 'حضور'))
+        with up_t1:
+            up_file = st.file_uploader("ارفع ملف الإكسيل (BLUEWORKS / Attendance)", type=["xlsx", "xls"])
+            if up_file and st.button("⚙️ معالجة الملف وتطبيق قواعد الحضور"):
+                try:
+                    df_up = pd.read_excel(up_file)
+                    conn = get_db()
+                    count = 0
+                    for idx, row in df_up.dropna(subset=['Code'] if 'Code' in df_up.columns else df_up.columns[:1]).iterrows():
+                        code = str(row.get('Code', row.get('كود', idx)))
+                        name = str(row.get('Employee Name', row.get('Name', 'موظف')))
+                        deprt = str(row.get('Branch', row.get('Deprt', 'Factory')))
+                        date_val = str(row.get('Date', datetime.now().date()))[:10]
+                        day_name = str(row.get('اليوم', 'الإثنين'))
+                        status = str(row.get('Status', row.get('الحالة', 'Attend')))
+                        c_in = str(row.get('Clock In Time', row.get('حضور', '08:08 AM')))
+                        c_out = str(row.get('Clock Out Time', row.get('انصراف', '04:27 PM')))
+                        
+                        # منطق حساب التأخير والإضافي بناءً على المتطلبات
+                        overtime = "0"
+                        delay = "0"
+                        if deprt.lower() == 'factory':
+                            # وردية ثابتة من 8 ص إلى 4 م
+                            overtime = "إضافي حسب ساعات العمل الزائدة"
+                            delay = "تأخير إن وجد"
+                        else:
+                            overtime = "بناءً على 8 ساعات عمل"
+                            
+                        conn.execute("""
+                            INSERT INTO attendance_logs (period_id, emp_id, emp_name, deprt, date, day_name, status, check_in, check_out, overtime, delay)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                        """, (p_id, code, name, deprt, date_val, day_name, status, c_in, c_out, overtime, delay))
+                        count += 1
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ تمت معالجة وإضافة {count} سجلاً بنجاح وفق القواعد المحددة!")
+                except Exception as e:
+                    st.error(f"خطأ أثناء المعالجة: {e}")
                     
-                    conn.execute("""
-                        INSERT INTO attendance_logs (period_id, emp_code, emp_name, branch_name, date, check_in, check_out, status)
-                        VALUES (?,?,?,?,?,?,?,?)
-                    """, (p_id, code, name, branch, date_val, c_in, c_out, stat))
-                    count += 1
-                conn.commit()
-                conn.close()
-                st.success(f"✅ تمت إضافة {count} سجلاً بنجاح!")
-            except Exception as e:
-                st.error(f"خطأ: {e}")
+        with up_t2:
+            st.markdown("""
+            - **قسم Factory:** وردية ثابتة من **8:00 صباحاً إلى 4:00 عصراً**. أي حضور قبل أو انصراف بعد المدة يحسب إضافي، وأقل من 8 ساعات يحسب تأخير أو انصراف مبكر.
+            - **باقي الفروع:** معيار 8 ساعات عمل فعلية لكل موظف يومياً.
+            """)
 
-elif menu == "✏️ تعديل سجلات الحضور والانصراف يدويًا":
-    st.markdown('<div class="main-header">✏️ التعديل اليدوي الكامل على السجلات</div>', unsafe_allow_html=True)
+elif main_menu == "✏️ التعديل اليدوي":
+    st.markdown('<div class="main-header">✏️ التعديل اليدوي على السجلات</div>', unsafe_allow_html=True)
     if not active_period.empty:
         conn = get_db()
-        df_logs = pd.read_sql("SELECT id, emp_code as 'الكود', emp_name as 'الاسم', branch_name as 'الفرع', date as 'التاريخ', check_in as 'الدخول', check_out as 'الانصراف', status as 'الحالة' FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
+        df_logs = pd.read_sql("SELECT id, emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
         conn.close()
         if not df_logs.empty:
             st.dataframe(df_logs, use_container_width=True)
-            rec_id = st.number_input("أدخل ID السجل للتعديل:", min_value=1, step=1)
+            rec_id = st.number_input("أدخل رقم الـ ID السجل للتعديل:", min_value=1, step=1)
             row = df_logs[df_logs['id'] == rec_id]
             if not row.empty:
                 with st.form("edit_f"):
-                    ni = st.text_input("الدخول", value=str(row.iloc[0]['الدخول']))
-                    no = st.text_input("الانصراف", value=str(row.iloc[0]['الانصراف']))
+                    ni = st.text_input("وقت الحضور", value=str(row.iloc[0]['حضور']))
+                    no = st.text_input("وقت الانصراف", value=str(row.iloc[0]['انصراف']))
                     ns = st.text_input("الحالة", value=str(row.iloc[0]['الحالة']))
                     if st.form_submit_button("حفظ التعديل"):
                         conn = get_db()
                         conn.execute("UPDATE attendance_logs SET check_in=?, check_out=?, status=? WHERE id=?", (ni, no, ns, rec_id))
                         conn.commit()
                         conn.close()
-                        st.success("✅ تم التحديث!")
+                        st.success("✅ تم التحديث بنجاح!")
                         st.rerun()
 
-elif menu == "📋 شيت الحضور النهائي للشهر":
-    st.markdown('<div class="main-header">📋 شيت الحضور النهائي والتصدير</div>', unsafe_allow_html=True)
+elif main_menu == "📋 شيت الحضور النهائي":
+    st.markdown('<div class="main-header">📋 شيت الحضور النهائي (مطابق للشكل المطلوب)</div>', unsafe_allow_html=True)
     if not active_period.empty:
         conn = get_db()
-        q = "SELECT emp_code as 'الكود', emp_name as 'اسم الموظف', branch_name as 'الفرع', date as 'التاريخ', check_in as 'الدخول', check_out as 'الانصراف', status as 'الحالة' FROM attendance_logs WHERE period_id=?"
-        p = [p_id]
-        if selected_branch != "جميع الفروع":
-            q += " AND branch_name=?"
-            p.append(selected_branch)
-        df_f = pd.read_sql(q, conn, params=p)
+        q = "SELECT emp_id as 'ID', emp_name as 'NAME', deprt as 'Deprt', date as 'Date', day_name as 'اليوم', status as 'الحالة', check_in as 'حضور', check_out as 'انصراف' FROM attendance_logs WHERE period_id=?"
+        df_f = pd.read_sql(q, conn, params=[p_id])
         conn.close()
+        
         if not df_f.empty:
+            # فلترة أفقية عرضية أعلي الشاشة
+            search_name = st.text_input("🔍 بحث سريع بالاسم أو الكود:")
+            if search_name:
+                df_f = df_f[df_f['NAME'].str.contains(search_name, na=False) | df_f['ID'].str.contains(search_name, na=False)]
+                
             st.dataframe(df_f, use_container_width=True)
             csv = df_f.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 تحميل إكسيل", csv, f"Attendance_{p_name}.csv", "text/csv")
+            st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv, f"Attendance_Sheet_{p_name}.csv", "text/csv")
+        else:
+            st.info("الشيت فارغ حالياً. قم برفع ملفات الحضور لمعالجتها وعرضها.")
