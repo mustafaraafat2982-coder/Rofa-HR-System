@@ -84,7 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الجداول
+# 2. قاعدة البيانات وإدارة الجداول مع الهجرة التلقائية للأعمدة
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -123,6 +123,15 @@ def init_db():
         delay TEXT
     )''')
     
+    # فحص وإضافة عمود file_id إن لم يكن موجوداً في قاعدة البيانات القديمة
+    c.execute("PRAGMA table_info(attendance_logs)")
+    columns = [col[1] for col in c.fetchall()]
+    if 'file_id' not in columns:
+        try:
+            c.execute("ALTER TABLE attendance_logs ADD COLUMN file_id INTEGER")
+        except:
+            pass
+            
     conn.commit()
     conn.close()
 
@@ -300,7 +309,7 @@ else:
         
         st.markdown(f"""
         <div class="box-container">
-            <div class="box-title">رفع وتحليل ملفات النظام المزدوج (Blueworks & Report):</div>
+            <div class="box-title">رفع وتحليل ملفات النظام المزدوج:</div>
             <p style="color: #ffffff !important;">قم برفع ملف <b>Blueworks 8.xlsx</b> وملف <b>Report 8.xlsx</b> معاً لمعالجة الدمج وحساب التأخير والـ Overtime تلقائياً.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -330,12 +339,10 @@ else:
                     day_name = str(row.get('اليوم', 'الإثنين'))
                     status = str(row.get('Status', 'Attend'))
                     
-                    # البحث عن أوقات البصمة في تقرير ZK (Report 8)
                     matched_rpt = df_rpt[(df_rpt['كود'].astype(str).str.contains(code)) & (df_rpt['Date'].astype(str).str.contains(date_val))]
                     c_in, c_out = "08:00 AM", "04:00 PM"
                     if not matched_rpt.empty:
                         t_str = str(matched_rpt.iloc[0]['Time'])
-                        # استخراج أوقات البصمة البسيطة
                         times = t_str.split()
                         if len(times) >= 2:
                             c_in = times[0]
