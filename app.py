@@ -5,20 +5,18 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة والتصميم (RTL + Cairo)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (Clean UI)
 # ==========================================
 st.set_page_config(
-    page_title="نظام الحضور والانصراف والداشبورد | Enterprise HRIS", 
+    page_title="نظام إدارة الحضور والرواتب المؤسسي", 
     layout="wide", 
     page_icon="🏢",
     initial_sidebar_state="expanded"
 )
 
-# حقن CSS احترافي لدعم اللغة العربية والتصميم النظيف
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap');
-    
     * { font-family: 'Cairo', sans-serif !important; }
     .stApp { background-color: #f8fafc; }
     
@@ -35,15 +33,6 @@ st.markdown("""
         border-right: 6px solid #3b82f6;
     }
     
-    .metric-card {
-        background: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        border: 1px solid #e2e8f0;
-        text-align: right;
-    }
-    
     .stButton>button { 
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important; 
         color: white !important; 
@@ -53,16 +42,12 @@ st.markdown("""
         padding: 10px 20px !important;
         width: 100%;
     }
-    
-    div[data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-left: 1px solid #e2e8f0;
-    }
+    div[data-testid="stSidebar"] { background-color: #ffffff; border-left: 1px solid #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. إدارة قاعدة البيانات والفروع
+# 2. قاعدة البيانات وإدارة الشهور والفروع
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -70,18 +55,35 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
+    # جدول إدارة الفترات الشهرية (بداية ونهاية الشهر)
+    c.execute('''CREATE TABLE IF NOT EXISTS active_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_name TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1
+    )''')
+    
     # جدول الفروع
     c.execute('''CREATE TABLE IF NOT EXISTS branches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         branch_name TEXT UNIQUE NOT NULL
     )''')
     
-    # إضافة الفروع الأساسية تلقائياً إن لم تكن موجودة
-    c.execute("SELECT COUNT(*) FROM branches")
-    if c.fetchone()[0] == 0:
-        default_branches = [("Smouha",), ("Factory",), ("Waterway",), ("North Coast",), ("Smouha 2",), ("Museum Branch",), ("WOC Branch",), ("Khufu branch",)]
-        c.executemany("INSERT INTO branches (branch_name) VALUES (?)", default_branches)
-        
+    # جدول سجلات الحضور المدمجة
+    c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_id INTEGER,
+        emp_code TEXT,
+        emp_name TEXT,
+        branch_name TEXT,
+        date TEXT,
+        check_in TEXT,
+        check_out TEXT,
+        status TEXT,
+        FOREIGN KEY(period_id) REFERENCES active_periods(id)
+    )''')
+    
     conn.commit()
     conn.close()
 
@@ -91,155 +93,200 @@ def get_db():
 init_db()
 
 # ==========================================
-# 3. القائمة الجانبية وإدارة الفروع
+# 3. القائمة الجانبية وإدارة الفترات الشهرية
 # ==========================================
-st.sidebar.markdown("### 🏢 القائمة الإدارية وتصفية الفروع")
+st.sidebar.markdown("### 🏢 لوحة التحكم والإدارة")
 
-# جلب قائمة الفروع
 conn = get_db()
-branches_df = pd.read_sql("SELECT branch_name FROM branches", conn)
-branch_list = branches_df['branch_name'].tolist()
+active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
 
-selected_branch = st.sidebar.selectbox("📍 تصفية حسب الفرع:", ["جميع الفروع"] + branch_list)
+if active_period.empty:
+    st.sidebar.warning("⚠️ لا توجد فترة شهرية نشطة حالياً.")
+    with st.sidebar.form("create_period_form"):
+        st.markdown("#### فتح شهر / فترة جديدة")
+        p_name = st.text_input("اسم الفترة (مثال: شهر أغسطس 2026)")
+        p_start = st.date_input("يبدأ من تاريخ")
+        p_end = st.date_input("ينتهي في تاريخ")
+        create_btn = st.form_submit_button("إنشاء الفترة وتنشيطها")
+        if create_btn and p_name:
+            conn.execute("UPDATE active_periods SET is_active=0")
+            conn.execute("INSERT INTO active_periods (period_name, start_date, end_date, is_active) VALUES (?,?,?,1)",
+                         (p_name, str(p_start), str(p_end)))
+            conn.commit()
+            st.success("✅ تمت تهيئة الفترة الجديدة بنجاح!")
+            st.rerun()
+else:
+    p_id = active_period.iloc[0]['id']
+    p_name = active_period.iloc[0]['period_name']
+    p_start = active_period.iloc[0]['start_date']
+    p_end = active_period.iloc[0]['end_date']
+    
+    st.sidebar.markdown(f"**الشهر النشط:** `{p_name}`")
+    st.sidebar.markdown(f"📅 من `{p_start}` إلى `{p_end}`")
+    
+    if st.sidebar.button("🔒 إغلاق الشهر وفتح شهر جديد"):
+        conn.execute("UPDATE active_periods SET is_active=0 WHERE id=?", (p_id,))
+        conn.commit()
+        st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### ⚙️ إدارة الفروع")
 
-# إضافة فرع جديد
-new_branch = st.sidebar.text_input("اسم الفرع الجديد:")
+# إدارة الفروع
+branches_df = pd.read_sql("SELECT branch_name FROM branches", conn)
+branch_list = branches_df['branch_name'].tolist()
+selected_branch = st.sidebar.selectbox("📍 تصفية حسب الفرع:", ["جميع الفروع"] + branch_list)
+
+new_br = st.sidebar.text_input("إضافة فرع جديد:")
 if st.sidebar.button("➕ إضافة فرع"):
-    if new_branch.strip():
+    if new_br.strip():
         try:
-            conn.execute("INSERT INTO branches (branch_name) VALUES (?)", (new_branch.strip(),))
+            conn.execute("INSERT INTO branches (branch_name) VALUES (?)", (new_br.strip(),))
             conn.commit()
-            st.sidebar.success(f"تمت إضافة {new_branch}")
             st.rerun()
-        except Exception as e:
+        except:
             st.sidebar.error("الفرع موجود مسبقاً")
-
-# حذف فرع
-branch_to_del = st.sidebar.selectbox("حذف فرع:", ["اختر فرعاً..."] + branch_list)
-if st.sidebar.button("🗑️ حذف الفرع المختار"):
-    if branch_to_del != "اختر فرعاً...":
-        conn.execute("DELETE FROM branches WHERE branch_name=?", (branch_to_del,))
-        conn.commit()
-        st.sidebar.warning(f"تم حذف {branch_to_del}")
-        st.rerun()
 
 conn.close()
 
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("اختر الشاشة:", [
-    "📊 لوحة التحليلات والداشبورد (Dashboard)",
-    "📥 رفع ودمج ملفات الحضور (BLUEWORKS + 08.Report)",
-    "📋 شيت الحضور التفصيلي (مطابق للصورة)"
+menu = st.sidebar.radio("القائمة الرئيسية:", [
+    "📊 الداشبورد ولوحة المؤشرات",
+    "📥 رفع ملف الحضور اليومي (تلقائي)",
+    "✏️ تعديل سجلات الحضور والانصراف يدويًا",
+    "📋 شيت الحضور النهائي للشهر"
 ])
 
 # ==========================================
-# 4. شاشة رفع ودمج الملفات تلقائياً
+# 4. الشاشات والأقسام البرمجية
 # ==========================================
-if menu == "📥 رفع ودمج ملفات الحضور (BLUEWORKS + 08.Report)":
-    st.markdown('<div class="main-header">📥 رفع وتجهيز ملفات BLUEWORKS و 08.Report (ZK)</div>', unsafe_allow_html=True)
-    st.info("قم برفع ملف BLUEWORKS وملف 08.Report وسيقوم النظام بمطابقة الأكواد والتأكيدات تلقائياً وملء الشيت.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("1️⃣ ملف BLUEWORKS.xlsx")
-        bw_file = st.file_uploader("اختر ملف BLUEWORKS", type=["xlsx", "xls"])
-    with col2:
-        st.subheader("2️⃣ ملف 08.Report.xlsx")
-        rep_file = st.file_uploader("اختر ملف 08.Report (ZK)", type=["xlsx", "xls"])
 
-    if st.button("🔄 بدء معالجة ومطابقة البيانات"):
-        if bw_file is not None and rep_file is not None:
-            try:
-                # قراءة الشيتات
-                df_bw = pd.read_excel(bw_file, sheet_name='Attendance Sheet')
-                df_rep = pd.read_excel(rep_file, sheet_name='ATT')
-                
-                # حفظ البيانات المعالجة في الـ Session State
-                st.session_state['df_bw_processed'] = df_bw.dropna(subset=['Code']).copy()
-                st.session_state['df_rep_processed'] = df_rep.dropna(subset=['كود']).copy()
-                
-                st.success("✅ تم تحليل الملفات ومطابقة البيانات بنجاح! يمكنك الآن الانتقال لشيت الحضور أو الداشبورد.")
-            except Exception as e:
-                st.error(f"حدث خطأ أثناء قراءة الملفات: {e}")
-        else:
-            st.warning("⚠️ يرجى اختيار الملفين معاً لمتابعة الدمج.")
-
-# ==========================================
-# 5. شاشة الداشبورد والتحليلات (Dashboard)
-# ==========================================
-elif menu == "📊 لوحة التحليلات والداشبورد (Dashboard)":
-    st.markdown('<div class="main-header">📊 لوحة القيادة ومؤشرات الحضور والغياب</div>', unsafe_allow_html=True)
+# --- أ. لوحة القيادة (Dashboard) ---
+if menu == "📊 الداشبورد ولوحة المؤشرات":
+    st.markdown('<div class="main-header">📊 لوحة القيادة والمؤشرات الحية</div>', unsafe_allow_html=True)
     
-    if 'df_bw_processed' in st.session_state:
-        df_bw = st.session_state['df_bw_processed']
+    if not active_period.empty:
+        conn = get_db()
+        df_logs = pd.read_sql("SELECT * FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
+        conn.close()
         
-        # تصفية حسب الفرع
-        if selected_branch != "جميع الفروع":
-            df_filtered = df_bw[df_bw['Branch'] == selected_branch]
-        else:
-            df_filtered = df_bw
-            
-        # إحصائيات سريعة
-        col1, col2, col3, col4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("إجمالي السجلات المسجلة", len(df_logs))
+        c2.metric("عدد الحركات المسجلة", df_logs['emp_code'].nunique() if not df_logs.empty else 0)
+        c3.metric("حالة الفترة الشهرية", "نشطة ومفتوحة", delta="جاهزة")
         
-        total_records = len(df_filtered)
-        total_employees = df_filtered['Code'].nunique()
-        present_count = df_filtered['Clock In Time'].notna().sum()
-        absent_count = total_records - present_count
-        
-        with col1:
-            st.metric("إجمالي السجلات المسجلة", total_records)
-        with col2:
-            st.metric("عدد الموظفين", total_employees)
-        with col3:
-            st.metric("حالات الحضور ببصمة", present_count)
-        with col4:
-            st.metric("إجازات / غياب / بدون بصمة", absent_count)
-            
         st.markdown("---")
-        
-        # رسومات بيانية وتحليلات
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("📌 توزيع السجلات حسب الفرع")
-            branch_counts = df_bw['Branch'].value_counts()
-            st.bar_chart(branch_counts)
-            
-        with c2:
-            st.subheader("📌 حالات الحضور والغياب")
-            status_counts = df_filtered['Status'].value_counts()
-            st.bar_chart(status_counts)
-            
-    else:
-        st.warning("👋 يرجى رفع ملفات الحضور أولاً من قسم (رفع ودمج ملفات الحضور) لعرض الداشبورد.")
-
-# ==========================================
-# 6. عرض شيت الحضور التفصيلي المطابق للصورة
-# ==========================================
-elif menu == "📋 شيت الحضور التفصيلي (مطابق للصورة)":
-    st.markdown(f'<div class="main-header">📋 شيت متابعة الحضور والانصراف - {selected_branch}</div>', unsafe_allow_html=True)
-    
-    if 'df_bw_processed' in st.session_state:
-        df_bw = st.session_state['df_bw_processed']
-        
-        # تطبيق التصفية حسب الفرع
-        if selected_branch != "جميع الفروع":
-            df_display = df_bw[df_bw['Branch'] == selected_branch]
+        if not df_logs.empty:
+            st.subheader("توزيع الحضور حسب الفروع")
+            st.bar_chart(df_logs['branch_name'].value_counts())
         else:
-            df_display = df_bw
-            
-        # اختيار الأعمدة المطابقة للشيت الأصلي
-        cols_to_show = ['Code', 'Employee Name', 'Branch', 'Title', 'Date', 'Shift Start Time', 'Clock In Time', 'Shift End Time', 'Clock Out Time', 'Status', 'Note']
-        available_cols = [c for c in cols_to_show if c in df_display.columns]
-        
-        st.dataframe(df_display[available_cols], use_container_width=True)
-        
-        # زر تصدير الشيت الناتج إلى Excel
-        csv = df_display[available_cols].to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 تصدير الشيت المصفى إلى Excel (CSV)", csv, f"Attendance_Report_{selected_branch}.csv", "text/csv")
-        
+            st.info("لا توجد بيانات مسجلة في هذه الفترة بعد. ابدأ برفع ملفات الحضور اليومية.")
     else:
-        st.warning("⚠️ الشيت فارغ حالياً. قم برفع الملفين (BLUEWORKS + 08.Report) لملء البيانات تلقائياً.")
+        st.warning("⚠️ يرجى إنشاء فترة شهرية جديدة من القائمة الجانبية للبدء.")
+
+# --- ب. رفع الملف اليومي ---
+elif menu == "📥 رفع ملف الحضور اليومي (تلقائي)":
+    st.markdown('<div class="main-header">📥 رفع ملف الحضور اليومي ومعالجته تلقائياً</div>', unsafe_allow_html=True)
+    
+    if active_period.empty:
+        st.error("❌ لا يمكن رفع ملفات لعدم وجود فترة شهرية نشطة. يرجى إنشاء شهر جديد من القائمة الجانبية.")
+    else:
+        today_date = datetime.now().date()
+        end_date_obj = datetime.strptime(p_end, "%Y-%m-%d").date()
+        
+        if today_date > end_date_obj:
+            st.markdown(f'<div style="background-color:#fee2e2; color:#991b1b; padding:15px; border-radius:8px; font-weight:bold;">⚠️ لقد انتهت فترة هذا الشهر (تاريخ النهاية كان {p_end}). لا يمكن رفع ملفات جديدة إلا بعد إغلاق الشهر الحالي وفتح شهر جديد من القائمة الجانبية.</div>', unsafe_allow_html=True)
+        else:
+            st.info(f"💡 الفترة الحالية نشطة ومتاحة لرفع الملفات حتى تاريخ: {p_end}")
+            
+            up_file = st.file_uploader("ارفع ملف الحضور (BLUEWORKS أو ZK Report) اليومي", type=["xlsx", "xls"])
+            
+            if up_file and st.button("⚙️ معالجة وإضافة الملف للشهر الحالي"):
+                try:
+                    df_up = pd.read_excel(up_file)
+                    conn = get_db()
+                    
+                    inserted_count = 0
+                    for idx, row in df_up.dropna(subset=['Code'] if 'Code' in df_up.columns else df_up.columns[:1]).iterrows():
+                        code = str(row.get('Code', row.get('كود', idx)))
+                        name = str(row.get('Employee Name', row.get('Name', 'موظف')))
+                        branch = str(row.get('Branch', 'الفرع الرئيسي'))
+                        date_val = str(row.get('Date', datetime.now().date()))[:10]
+                        c_in = str(row.get('Clock In Time', row.get('الدخول', '08:00 AM')))
+                        c_out = str(row.get('Clock Out Time', row.get('الخروج', '04:00 PM')))
+                        stat = str(row.get('Status', 'حضور'))
+                        
+                        conn.execute("""
+                            INSERT INTO attendance_logs (period_id, emp_code, emp_name, branch_name, date, check_in, check_out, status)
+                            VALUES (?,?,?,?,?,?,?,?)
+                        """, (p_id, code, name, branch, date_val, c_in, c_out, stat))
+                        inserted_count += 1
+                        
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ تمت معالجة الملف وإضافة {inserted_count} سجلاً إلى الفترة الشهرية بنجاح!")
+                except Exception as e:
+                    st.error(f"حدث خطأ أثناء معالجة الملف: {e}")
+
+# --- ج. التعديل اليدوي في أي وقت ---
+elif menu == "✏️ تعديل سجلات الحضور والانصراف يدويًا":
+    st.markdown('<div class="main-header">✏️ التعديل اليدوي على الحضور والانصراف</div>', unsafe_allow_html=True)
+    
+    if active_period.empty:
+        st.warning("لا توجد فترة نشطة.")
+    else:
+        conn = get_db()
+        df_logs = pd.read_sql("SELECT id, emp_code as 'الكود', emp_name as 'الاسم', branch_name as 'الفرع', date as 'التاريخ', check_in as 'الدخول', check_out as 'الانصراف', status as 'الحالة' FROM attendance_logs WHERE period_id=?", conn, params=[p_id])
+        
+        if df_logs.empty:
+            st.info("لا توجد سجلات متاحة للتعديل حالياً.")
+        else:
+            st.dataframe(df_logs, use_container_width=True)
+            
+            st.markdown("#### تعديل سجل معين باستخدام رقم الـ ID")
+            rec_id = st.number_input("أدخل رقم الـ ID السجل المراد تعديله:", min_value=1, step=1)
+            
+            selected_row = df_logs[df_logs['id'] == rec_id]
+            if not selected_row.empty:
+                current_in = selected_row.iloc[0]['الدخول']
+                current_out = selected_row.iloc[0]['الانصراف']
+                current_status = selected_row.iloc[0]['الحالة']
+                
+                with st.form("edit_form"):
+                    new_in = st.text_input("وقت الدخول الجديد:", value=str(current_in))
+                    new_out = st.text_input("وقت الانصراف الجديد:", value=str(current_out))
+                    new_stat = st.text_input("الحالة الجديدة:", value=str(current_status))
+                    
+                    if st.form_submit_button("حفظ التعديلات"):
+                        conn.execute("UPDATE attendance_logs SET check_in=?, check_out=?, status=? WHERE id=?",
+                                     (new_in, new_out, new_stat, rec_id))
+                        conn.commit()
+                        st.success("✅ تم تحديث السجل بنجاح!")
+                        st.rerun()
+            else:
+                st.info("اختر ID صحيح من الجدول أعلاه.")
+        conn.close()
+
+# --- د. شيت الحضور النهائي ---
+elif menu == "📋 شيت الحضور النهائي للشهر":
+    st.markdown('<div class="main-header">📋 شيت الحضور المدمج والنهائي</div>', unsafe_allow_html=True)
+    
+    if active_period.empty:
+        st.warning("لا توجد فترة نشطة.")
+    else:
+        conn = get_db()
+        query = "SELECT emp_code as 'الكود', emp_name as 'اسم الموظف', branch_name as 'الفرع', date as 'التاريخ', check_in as 'الدخول', check_out as 'الانصراف', status as 'الحالة' FROM attendance_logs WHERE period_id=?"
+        params = [p_id]
+        
+        if selected_branch != "جميع الفروع":
+            query += " AND branch_name=?"
+            params.append(selected_branch)
+            
+        df_final = pd.read_sql(query, conn, params=params)
+        conn.close()
+        
+        if df_final.empty:
+            st.info("الشيت فارغ لهذه الفترة.")
+        else:
+            st.dataframe(df_final, use_container_width=True)
+            csv_data = df_final.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 تحميل الشيت بصيغة Excel (CSV)", csv_data, f"Attendance_{p_name}.csv", "text/csv")
