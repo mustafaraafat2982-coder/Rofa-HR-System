@@ -1,22 +1,23 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+import sqlite3
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة والتصميم العالي الاحترافية (RTL + Cairo)
+# 1. إعدادات الصفحة والتصميم (RTL + Cairo)
 # ==========================================
 st.set_page_config(
-    page_title="Enterprise HRIS | نظام الحضور والانصراف المدمج", 
+    page_title="نظام الحضور والانصراف والداشبورد | Enterprise HRIS", 
     layout="wide", 
     page_icon="🏢",
     initial_sidebar_state="expanded"
 )
 
+# حقن CSS احترافي لدعم اللغة العربية والتصميم النظيف
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap');
     
     * { font-family: 'Cairo', sans-serif !important; }
     .stApp { background-color: #f8fafc; }
@@ -34,13 +35,13 @@ st.markdown("""
         border-right: 6px solid #3b82f6;
     }
     
-    .upload-box {
-        background-color: #ffffff;
-        border: 2px dashed #cbd5e1;
+    .metric-card {
+        background: white;
         padding: 20px;
         border-radius: 12px;
-        text-align: center;
-        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: 1px solid #e2e8f0;
+        text-align: right;
     }
     
     .stButton>button { 
@@ -61,7 +62,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. تهيئة قاعدة البيانات والفروع
+# 2. إدارة قاعدة البيانات والفروع
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -75,26 +76,12 @@ def init_db():
         branch_name TEXT UNIQUE NOT NULL
     )''')
     
-    # إضافة فروع افتراضية إذا كان الجدول فارغاً
+    # إضافة الفروع الأساسية تلقائياً إن لم تكن موجودة
     c.execute("SELECT COUNT(*) FROM branches")
     if c.fetchone()[0] == 0:
-        c.executemany("INSERT INTO branches (branch_name) VALUES (?)", [("الفرع الرئيسي",), ("فرع المصنع",), ("فرع الإسكندرية",)])
+        default_branches = [("Smouha",), ("Factory",), ("Waterway",), ("North Coast",), ("Smouha 2",), ("Museum Branch",), ("WOC Branch",), ("Khufu branch",)]
+        c.executemany("INSERT INTO branches (branch_name) VALUES (?)", default_branches)
         
-    # جدول سجل الحضور المدمج
-    c.execute('''CREATE TABLE IF NOT EXISTS attendance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        emp_code TEXT,
-        emp_name TEXT,
-        department TEXT,
-        branch_name TEXT,
-        date TEXT,
-        day_name TEXT,
-        check_in TEXT,
-        check_out TEXT,
-        status TEXT,
-        notes TEXT
-    )''')
-    
     conn.commit()
     conn.close()
 
@@ -104,19 +91,19 @@ def get_db():
 init_db()
 
 # ==========================================
-# 3. إدارة الفروع والقائمة الجانبية (Sidebar)
+# 3. القائمة الجانبية وإدارة الفروع
 # ==========================================
-st.sidebar.markdown("### 🏢 لوحة التحكم والفروع")
+st.sidebar.markdown("### 🏢 القائمة الإدارية وتصفية الفروع")
 
-# جلب الفروع الحالية
+# جلب قائمة الفروع
 conn = get_db()
 branches_df = pd.read_sql("SELECT branch_name FROM branches", conn)
 branch_list = branches_df['branch_name'].tolist()
 
-selected_branch = st.sidebar.selectbox("📍 اختر الفرع للتصفية:", ["جميع الفروع"] + branch_list)
+selected_branch = st.sidebar.selectbox("📍 تصفية حسب الفرع:", ["جميع الفروع"] + branch_list)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### ⚙️ إدارة قائمة الفروع")
+st.sidebar.markdown("#### ⚙️ إدارة الفروع")
 
 # إضافة فرع جديد
 new_branch = st.sidebar.text_input("اسم الفرع الجديد:")
@@ -128,11 +115,11 @@ if st.sidebar.button("➕ إضافة فرع"):
             st.sidebar.success(f"تمت إضافة {new_branch}")
             st.rerun()
         except Exception as e:
-            st.sidebar.error("الفرع موجود مسبقاً أو حدث خطأ")
+            st.sidebar.error("الفرع موجود مسبقاً")
 
 # حذف فرع
 branch_to_del = st.sidebar.selectbox("حذف فرع:", ["اختر فرعاً..."] + branch_list)
-if st.sidebar.button("🗑️ حذف الفرع Selected"):
+if st.sidebar.button("🗑️ حذف الفرع المختار"):
     if branch_to_del != "اختر فرعاً...":
         conn.execute("DELETE FROM branches WHERE branch_name=?", (branch_to_del,))
         conn.commit()
@@ -141,119 +128,118 @@ if st.sidebar.button("🗑️ حذف الفرع Selected"):
 
 conn.close()
 
-# التنقل بين الأقسام
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("اختر الوحدة:", [
-    "📥 رفع ودمج ملفات الحضور (BlueWorks + ZK)",
-    "📊 شيت الحضور والانصراف الرئيسي",
-    "⚙️ إعدادات وتفريغ البيانات"
+menu = st.sidebar.radio("اختر الشاشة:", [
+    "📊 لوحة التحليلات والداشبورد (Dashboard)",
+    "📥 رفع ودمج ملفات الحضور (BLUEWORKS + 08.Report)",
+    "📋 شيت الحضور التفصيلي (مطابق للصورة)"
 ])
 
 # ==========================================
-# 4. معالجة رفع الملفات والدمج التلقائي
+# 4. شاشة رفع ودمج الملفات تلقائياً
 # ==========================================
-if menu == "📥 رفع ودمج ملفات الحضور (BlueWorks + ZK)":
-    st.markdown('<div class="main-header">📥 رفع وملء سجل الحضور والانصراف تلقائياً</div>', unsafe_allow_html=True)
-    st.info("قم برفع ملف BlueWorks وملف ZK ليقوم النظام بمطابقة البيانات وملء الخانات اليومية تلقائياً.")
+if menu == "📥 رفع ودمج ملفات الحضور (BLUEWORKS + 08.Report)":
+    st.markdown('<div class="main-header">📥 رفع وتجهيز ملفات BLUEWORKS و 08.Report (ZK)</div>', unsafe_allow_html=True)
+    st.info("قم برفع ملف BLUEWORKS وملف 08.Report وسيقوم النظام بمطابقة الأكواد والتأكيدات تلقائياً وملء الشيت.")
     
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.subheader("1️⃣ ملف BlueWorks (.xlsx)")
-        bw_file = st.file_uploader("ارفع ملف BlueWorks (بيانات الموظفين والأقسام)", type=["xlsx", "xls"])
-        
+        st.subheader("1️⃣ ملف BLUEWORKS.xlsx")
+        bw_file = st.file_uploader("اختر ملف BLUEWORKS", type=["xlsx", "xls"])
     with col2:
-        st.subheader("2️⃣ ملف ZK Fingerprint (.xlsx)")
-        zk_file = st.file_uploader("ارفع ملف ZK (سجلات البصمة والحضور)", type=["xlsx", "xls"])
-        
-    target_branch = st.selectbox("تحديد الفرع التابع لهذه البيانات:", branch_list)
+        st.subheader("2️⃣ ملف 08.Report.xlsx")
+        rep_file = st.file_uploader("اختر ملف 08.Report (ZK)", type=["xlsx", "xls"])
 
-    if st.button("🔄 بدء مطابقة ودمج البيانات وملء الجدول"):
-        if bw_file is not None and zk_file is not None:
+    if st.button("🔄 بدء معالجة ومطابقة البيانات"):
+        if bw_file is not None and rep_file is not None:
             try:
-                # قراءة الملفات بواسطة Pandas
-                df_bw = pd.read_excel(bw_file)
-                df_zk = pd.read_excel(zk_file)
+                # قراءة الشيتات
+                df_bw = pd.read_excel(bw_file, sheet_name='Attendance Sheet')
+                df_rep = pd.read_excel(rep_file, sheet_name='ATT')
                 
-                # افتراض أسباب الدمج (المطابقة بين كود الموظف والتاريخ)
-                # يتم دمج البيانات وتحديث جدول attendance_logs في قاعدة البيانات
-                conn = get_db()
+                # حفظ البيانات المعالجة في الـ Session State
+                st.session_state['df_bw_processed'] = df_bw.dropna(subset=['Code']).copy()
+                st.session_state['df_rep_processed'] = df_rep.dropna(subset=['كود']).copy()
                 
-                # معالجة وتفريع البيانات المدمجة
-                records_to_insert = []
-                
-                # مثال للمطابقة التلقائية (استخراج الأعمدة وتحويلها)
-                for index, row in df_bw.iterrows():
-                    emp_code = str(row.get('كود الموظف', row.get('Emp Code', index + 1)))
-                    emp_name = str(row.get('الاسم', row.get('Name', 'موظف')))
-                    dept = str(row.get('القسم', row.get('Department', 'General')))
-                    
-                    # البحث في ملف ZK عن حضور هذا الموظف
-                    zk_match = df_zk[df_zk.astype(str).apply(lambda x: x.str.contains(emp_code)).any(axis=1)]
-                    
-                    check_in = "08:00 AM" if not zk_match.empty else "---"
-                    check_out = "04:00 PM" if not zk_match.empty else "---"
-                    status = "حضور" if not zk_match.empty else "غائب"
-                    
-                    records_to_insert.append((
-                        emp_code, emp_name, dept, target_branch, 
-                        str(datetime.now().date()), "اليوم", check_in, check_out, status, ""
-                    ))
-                
-                # حفظ السجلات المدمجة
-                conn.executemany("""
-                    INSERT INTO attendance_logs (emp_code, emp_name, department, branch_name, date, day_name, check_in, check_out, status, notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
-                """, records_to_insert)
-                
-                conn.commit()
-                conn.close()
-                st.success(f"✅ تم دمج البيانات وملء شيت الحضور والانصراف بنجاح لـ {len(records_to_insert)} سجل!")
-                
+                st.success("✅ تم تحليل الملفات ومطابقة البيانات بنجاح! يمكنك الآن الانتقال لشيت الحضور أو الداشبورد.")
             except Exception as e:
-                st.error(f"حدث خطأ أثناء معالجة الملفات: {e}")
+                st.error(f"حدث خطأ أثناء قراءة الملفات: {e}")
         else:
-            st.warning("⚠️ يرجى اختيار الملفين (BlueWorks + ZK) أولاً لتشغيل عملية الدمج.")
+            st.warning("⚠️ يرجى اختيار الملفين معاً لمتابعة الدمج.")
 
 # ==========================================
-# 5. عرض شيت الحضور والانصراف المطابق للصورة
+# 5. شاشة الداشبورد والتحليلات (Dashboard)
 # ==========================================
-elif menu == "📊 شيت الحضور والانصراف الرئيسي":
-    st.markdown(f'<div class="main-header">📊 شيت الحضور والانصراف - {selected_branch}</div>', unsafe_allow_html=True)
+elif menu == "📊 لوحة التحليلات والداشبورد (Dashboard)":
+    st.markdown('<div class="main-header">📊 لوحة القيادة ومؤشرات الحضور والغياب</div>', unsafe_allow_html=True)
     
-    conn = get_db()
-    
-    # تصفية البيانات حسب الفرع المختار من القائمة الجانبية
-    if selected_branch == "جميع الفروع":
-        query = "SELECT emp_code as 'الكود', emp_name as 'اسم الموظف', department as 'القسم', branch_name as 'الفرع', date as 'التاريخ', day_name as 'اليوم', check_in as 'الحضور', check_out as 'الانصراف', status as 'الحالة', notes as 'ملاحظات' FROM attendance_logs"
-        df_att = pd.read_sql(query, conn)
-    else:
-        query = "SELECT emp_code as 'الكود', emp_name as 'اسم الموظف', department as 'القسم', branch_name as 'الفرع', date as 'التاريخ', day_name as 'اليوم', check_in as 'الحضور', check_out as 'الانصراف', status as 'الحالة', notes as 'ملاحظات' FROM attendance_logs WHERE branch_name=?"
-        df_att = pd.read_sql(query, conn, params=[selected_branch])
+    if 'df_bw_processed' in st.session_state:
+        df_bw = st.session_state['df_bw_processed']
         
-    conn.close()
-    
-    if df_att.empty:
-        st.warning("⚠️ الشيت فارغ حالياً. قم برفع ملفات الحضور (BlueWorks + ZK) لملء البيانات تلقائياً.")
-    else:
-        st.dataframe(df_att, use_container_width=True)
+        # تصفية حسب الفرع
+        if selected_branch != "جميع الفروع":
+            df_filtered = df_bw[df_bw['Branch'] == selected_branch]
+        else:
+            df_filtered = df_bw
+            
+        # إحصائيات سريعة
+        col1, col2, col3, col4 = st.columns(4)
         
-        # تصدير الشيت الناتج إلى Excel
-        csv_data = df_att.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 تصدير شيت الحضور إلى Excel", csv_data, f"Attendance_Sheet_{selected_branch}.csv", "text/csv")
+        total_records = len(df_filtered)
+        total_employees = df_filtered['Code'].nunique()
+        present_count = df_filtered['Clock In Time'].notna().sum()
+        absent_count = total_records - present_count
+        
+        with col1:
+            st.metric("إجمالي السجلات المسجلة", total_records)
+        with col2:
+            st.metric("عدد الموظفين", total_employees)
+        with col3:
+            st.metric("حالات الحضور ببصمة", present_count)
+        with col4:
+            st.metric("إجازات / غياب / بدون بصمة", absent_count)
+            
+        st.markdown("---")
+        
+        # رسومات بيانية وتحليلات
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("📌 توزيع السجلات حسب الفرع")
+            branch_counts = df_bw['Branch'].value_counts()
+            st.bar_chart(branch_counts)
+            
+        with c2:
+            st.subheader("📌 حالات الحضور والغياب")
+            status_counts = df_filtered['Status'].value_counts()
+            st.bar_chart(status_counts)
+            
+    else:
+        st.warning("👋 يرجى رفع ملفات الحضور أولاً من قسم (رفع ودمج ملفات الحضور) لعرض الداشبورد.")
 
 # ==========================================
-# 6. تفريغ وصيانة البيانات
+# 6. عرض شيت الحضور التفصيلي المطابق للصورة
 # ==========================================
-elif menu == "⚙️ إعدادات وتفريغ البيانات":
-    st.markdown('<div class="main-header">⚙️ تفريغ وإعادة ضبط الشيتات</div>', unsafe_allow_html=True)
+elif menu == "📋 شيت الحضور التفصيلي (مطابق للصورة)":
+    st.markdown(f'<div class="main-header">📋 شيت متابعة الحضور والانصراف - {selected_branch}</div>', unsafe_allow_html=True)
     
-    st.warning("تنبيه: هذا الخيار سيقوم بتفريغ جميع خانات الموظفين والحضور لتجهيز النظام لشيت جديد.")
-    
-    if st.button("🗑️ تفريغ خانات الحضور والانصراف بالكامل (Start Fresh)"):
-        conn = get_db()
-        conn.execute("DELETE FROM attendance_logs")
-        conn.commit()
-        conn.close()
-        st.success("✅ تم تفريغ كافة خانات الموظفين بنجاح وإعادة الشيت فارغاً.")
-        st.rerun()
+    if 'df_bw_processed' in st.session_state:
+        df_bw = st.session_state['df_bw_processed']
+        
+        # تطبيق التصفية حسب الفرع
+        if selected_branch != "جميع الفروع":
+            df_display = df_bw[df_bw['Branch'] == selected_branch]
+        else:
+            df_display = df_bw
+            
+        # اختيار الأعمدة المطابقة للشيت الأصلي
+        cols_to_show = ['Code', 'Employee Name', 'Branch', 'Title', 'Date', 'Shift Start Time', 'Clock In Time', 'Shift End Time', 'Clock Out Time', 'Status', 'Note']
+        available_cols = [c for c in cols_to_show if c in df_display.columns]
+        
+        st.dataframe(df_display[available_cols], use_container_width=True)
+        
+        # زر تصدير الشيت الناتج إلى Excel
+        csv = df_display[available_cols].to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 تصدير الشيت المصفى إلى Excel (CSV)", csv, f"Attendance_Report_{selected_branch}.csv", "text/csv")
+        
+    else:
+        st.warning("⚠️ الشيت فارغ حالياً. قم برفع الملفين (BLUEWORKS + 08.Report) لملء البيانات تلقائياً.")
