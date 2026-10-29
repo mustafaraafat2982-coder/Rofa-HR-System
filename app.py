@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (RTL + سمني مطفي وبني غامق)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (RTL + سمني مطفي وبني غامق ونصوص بيضاء)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -84,7 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. قاعدة البيانات وإدارة الجداول والتسجيل
+# 2. قاعدة البيانات وإدارة الجداول
 # ==========================================
 DB_PATH = os.path.join(os.getcwd(), "enterprise_hris.db")
 
@@ -132,7 +132,7 @@ def get_db():
     return sqlite3.connect(DB_PATH)
 
 # ==========================================
-# 3. حساب التأخير والإضافي
+# 3. حساب التأخير والإضافي (بالدقائق)
 # ==========================================
 def calculate_attendance_metrics(deprt, check_in_str, check_out_str):
     delay_mins = 0
@@ -163,7 +163,7 @@ def calculate_attendance_metrics(deprt, check_in_str, check_out_str):
     return f"{delay_mins} دقيقة", f"{overtime_mins} دقيقة"
 
 # ==========================================
-# 4. القائمة العلوية الأفقية (داخل مستطيلات سميكة)
+# 4. القائمة العلوية الأفقية العريضة
 # ==========================================
 conn = get_db()
 active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
@@ -171,7 +171,6 @@ conn.close()
 
 st.markdown('<div class="main-header"><span>🏢 نظام إدارة الحضور والانصراف المؤسسي</span></div>', unsafe_allow_html=True)
 
-# شريط التنقل الأفقي العريض
 nav_tabs = [
     "📅 إدارة الفترات المخصصة", 
     "📊 الداشبورد والمؤشرات", 
@@ -194,7 +193,7 @@ if selected_tab == "📅 إدارة الفترات المخصصة":
     st.markdown("""
     <div class="box-container">
         <div class="box-title">تعليمات النظام الحر:</div>
-        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة. اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
+        <p style="color: #ffffff !important;">اختر الشهر المطلوب وحدد أيام البداية والنهاية بحرية تامة (مثال: من 21 الشهر الحالي إلى 20 الشهر القادم). اضغط على <b>تشغيل الفترة</b> ليعمل السيستم بناءً عليها.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -301,38 +300,49 @@ else:
         
         st.markdown(f"""
         <div class="box-container">
-            <div class="box-title">رفع ملفات النظام المزدوج:</div>
-            <p style="color: #ffffff !important;">قم برفع ملف <b>BLUEWORKS</b> وملف <b>08.Report (ZK)</b> لمعالجة الحالات وحساب التأخير والـ Overtime تلقائياً.</p>
+            <div class="box-title">رفع وتحليل ملفات النظام المزدوج (Blueworks & Report):</div>
+            <p style="color: #ffffff !important;">قم برفع ملف <b>Blueworks 8.xlsx</b> وملف <b>Report 8.xlsx</b> معاً لمعالجة الدمج وحساب التأخير والـ Overtime تلقائياً.</p>
         </div>
         """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
-        with col1: bw_file = st.file_uploader("1️⃣ ارفع ملف BLUEWORKS.xlsx", type=["xlsx", "xls"])
-        with col2: zk_file = st.file_uploader("2️⃣ ارفع ملف 08.Report.xlsx (ZK)", type=["xlsx", "xls"])
+        with col1: bw_file = st.file_uploader("1️⃣ ارفع ملف Blueworks 8.xlsx", type=["xlsx", "xls"])
+        with col2: rpt_file = st.file_uploader("2️⃣ ارفع ملف Report 8.xlsx (ZK)", type=["xlsx", "xls"])
         
-        if bw_file and zk_file and st.button("⚙️ معالجة ودمج الملفين وحساب التأخير والإضافي"):
+        if bw_file and rpt_file and st.button("⚙️ معالجة ودمج الملفين وحساب التأخير والإضافي"):
             try:
                 df_bw = pd.read_excel(bw_file, sheet_name=0)
-                conn = get_db()
+                df_rpt = pd.read_excel(rpt_file, sheet_name=0)
                 
-                # تسجيل عملية الرفع الجديدة
-                file_name_label = f"ملف مرفق بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                conn = get_db()
+                file_name_label = f"ملفين مرفقين بتاريخ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                 c_cursor = conn.cursor()
                 c_cursor.execute("INSERT INTO uploaded_files (period_id, file_name, upload_time) VALUES (?,?,?)",
                                  (active_p_id, file_name_label, str(datetime.now())))
                 f_id = c_cursor.lastrowid
                 
                 count = 0
-                for idx, row in df_bw.dropna(subset=['Code'] if 'Code' in df_bw.columns else df_bw.columns[:1]).iterrows():
-                    code = str(row.get('Code', row.get('كود', idx)))
-                    name = str(row.get('Employee Name', row.get('Name', 'موظف')))
-                    deprt = str(row.get('Branch', row.get('Deprt', 'Factory')))
+                for idx, row in df_bw.dropna(subset=['Code']).iterrows():
+                    code = str(row.get('Code'))
+                    name = str(row.get('Employee Name', 'موظف'))
+                    deprt = str(row.get('Branch', 'Factory'))
                     date_val = str(row.get('Date', datetime.now().date()))[:10]
                     day_name = str(row.get('اليوم', 'الإثنين'))
-                    status = str(row.get('Status', row.get('الحالة', 'Attend')))
-                    c_in = str(row.get('Clock In Time', '08:00 AM'))
-                    c_out = str(row.get('Clock Out Time', '04:00 PM'))
+                    status = str(row.get('Status', 'Attend'))
                     
+                    # البحث عن أوقات البصمة في تقرير ZK (Report 8)
+                    matched_rpt = df_rpt[(df_rpt['كود'].astype(str).str.contains(code)) & (df_rpt['Date'].astype(str).str.contains(date_val))]
+                    c_in, c_out = "08:00 AM", "04:00 PM"
+                    if not matched_rpt.empty:
+                        t_str = str(matched_rpt.iloc[0]['Time'])
+                        # استخراج أوقات البصمة البسيطة
+                        times = t_str.split()
+                        if len(times) >= 2:
+                            c_in = times[0]
+                            c_out = times[-1]
+                        elif len(times) == 1:
+                            c_in = times[0]
+                            
                     delay_res, overtime_res = calculate_attendance_metrics(deprt, c_in, c_out)
                     
                     conn.execute("""
@@ -342,7 +352,7 @@ else:
                     count += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ تمت معالجة وإضافة {count} سجلاً بنجاح!")
+                st.success(f"✅ تمت معالجة الملفين بنجاح وإضافة {count} سجلاً مع مطابقة بصمات ZK!")
             except Exception as e:
                 st.error(f"خطأ أثناء المعالجة: {e}")
 
