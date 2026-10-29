@@ -7,8 +7,8 @@ st.set_page_config(page_title="ROFA HR SYSTEM", page_icon="🌿", layout="wide")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, "rofa_hr.db")
-PHOTOS, DOCS = os.path.join(BASE, "photos"), os.path.join(BASE, "documents")
-for d in (PHOTOS, DOCS): os.makedirs(d, exist_ok=True)
+PHOTOS, DOC_DIR = os.path.join(BASE, "photos"), os.path.join(BASE, "documents")
+for d in (PHOTOS, DOC_DIR): os.makedirs(d, exist_ok=True)
 
 # ================= التصميم: خلفية سكرية + عناوين بنية =================
 BG, BROWN, DARK, CARD, GOLD, GREEN, RED = "#F3E3C3", "#6B4226", "#3E2723", "#FFF9EC", "#C8963E", "#2E7D32", "#B3261E"
@@ -53,7 +53,7 @@ def ex(sql, p=()):
     c = sqlite3.connect(DB); c.execute(sql, p); c.commit(); c.close()
 
 DEPTS = ["الإدارة العليا", "الموارد البشرية", "المالية", "المبيعات", "الإنتاج", "الجودة", "المخازن", "الصيانة", "الأمن", "تكنولوجيا المعلومات"]
-DOCS_LIST = ["صورة البطاقة الشخصية", "شهادة المؤهل الدراسي", "صحيفة الحالة الجنائية (فيش)", "شهادة الميلاد", "صور شخصية",
+DOCS = ["صورة البطاقة الشخصية", "شهادة المؤهل الدراسي", "صحيفة الحالة الجنائية (فيش)", "شهادة الميلاد", "صور شخصية",
              "موقف التجنيد", "الكشف الطبي / شهادة صحية", "استمارة التأمينات", "عقد العمل موقّع", "إقرار استلام العمل"]
 LEAVE_T = ["سنوية", "عارضة", "مرضية", "بدون أجر", "وضع", "حج / عمرة", "زواج", "وفاة"]
 
@@ -128,7 +128,7 @@ def card(label, val, color=BROWN):
     st.markdown(f'<div class="card" style="border-right-color:{color}">{label}<br><b style="color:{color}">{val}</b></div>', unsafe_allow_html=True)
 def save_file(up, prefix):
     if not up: return ""
-    p = os.path.join(DOCS, f"{prefix}_{datetime.now():%Y%m%d%H%M%S}_{up.name}")
+    p = os.path.join(DOC_DIR, f"{prefix}_{datetime.now():%Y%m%d%H%M%S}_{up.name}")
     open(p, "wb").write(up.getbuffer()); return p
 def emps(active=True):
     df = q("SELECT id, emp_code, full_name FROM employees" + (" WHERE status='نشط'" if active else ""))
