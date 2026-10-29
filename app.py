@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import os
 from datetime import datetime
+import io
 
 # ==========================================
 # 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (RTL + سمني مطفي وبني غامق ونصوص بيضاء)
@@ -440,8 +441,17 @@ else:
                 
             st.dataframe(df_f, use_container_width=True, hide_index=True)
             
-            # تصحيح صيغة تصدير CSV لفتحها في إكسيل بشكل صحيح في أعمدة منفصلة
-            csv_data = df_f.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
-            st.download_button("📥 تحميل الشيت بصيغة Excel", csv_data, f"Attendance_{active_p_name}.csv", "text/csv")
+            # تصدير الشيت بصيغة Excel الحقيقية (.xlsx) باستخدام openpyxl
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_f.to_excel(writer, index=False, sheet_name='Attendance')
+            excel_data = output.getvalue()
+            
+            st.download_button(
+                label="📥 تحميل الشيت بصيغة إكسيل (Excel .xlsx)",
+                data=excel_data,
+                file_name=f"Attendance_{active_p_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
             st.info("الشيت فارغ لهذه الفترة. قم برفع الملفات أولاً.")
