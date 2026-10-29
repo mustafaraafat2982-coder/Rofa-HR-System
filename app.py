@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. إعدادات الصفحة والتصميم المخصص (السكري الغامق والبني الغامق)
+# 1. إعدادات الصفحة وتصميم واجهة الـ HRIS (السكري المطفي)
 # ==========================================
 st.set_page_config(
     page_title="نظام إدارة الحضور والرواتب المؤسسي", 
@@ -20,21 +20,21 @@ st.markdown("""
     
     * { font-family: 'Cairo', sans-serif !important; font-weight: bold !important; font-size: 14px !important; }
     
-    /* خلفية التطبيق سكري غامق */
-    .stApp { background-color: #2b2b2b !important; color: #f7fafc !important; }
+    /* خلفية التطبيق سمني مطفي غير لامع */
+    .stApp { background-color: #E8E4DF !important; color: #2c221e !important; }
     
     /* الهيدر والعناوين الكبرى */
     .main-header { 
-        background-color: #3b2314 !important; /* بني غامق */
-        color: #000000 !important; /* أسود بولد للعناوين الداخلية */
+        background-color: #4a2e18 !important; /* بني غامق */
+        color: #000000 !important; 
         font-size: 22px !important; 
         font-weight: 900 !important; 
         text-align: center; 
         padding: 25px;
         border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.15);
         margin-bottom: 25px;
-        border: 2px solid #5c341b;
+        border: 2px solid #3d2616;
     }
     
     .main-header span {
@@ -44,11 +44,12 @@ st.markdown("""
 
     /* المستطيلات المحيطة بالعناوين بلون بني غامق */
     .box-container {
-        background-color: #3d2616;
-        border: 2px solid #5c341b;
+        background-color: #4a2e18;
+        border: 2px solid #3d2616;
         padding: 20px;
         border-radius: 10px;
         margin-bottom: 20px;
+        color: #ffffff;
     }
     
     .box-title {
@@ -64,15 +65,15 @@ st.markdown("""
         color: #ffffff !important; 
         border-radius: 8px !important;
         font-weight: 900 !important;
-        border: 1px solid #704214 !important;
+        border: 1px solid #3d2616 !important;
         padding: 12px 20px !important;
         width: 100%;
     }
     
-    div[data-testid="stSidebar"] { background-color: #242424 !important; border-left: 1px solid #3d3d3d; }
+    div[data-testid="stSidebar"] { background-color: #DFDBD6 !important; border-left: 1px solid #d0ccc7; }
     
     /* تنسيق النصوص العامة */
-    p, span, label, div { color: #f7fafc; font-weight: bold; }
+    p, span, label, div { color: #2c221e; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -128,7 +129,7 @@ conn = get_db()
 active_period = pd.read_sql("SELECT * FROM active_periods WHERE is_active=1 LIMIT 1", conn)
 conn.close()
 
-# القائمة الجانبية الرئيسية (بخط بولد وعرض الشاشة)
+# القائمة الجانبية الرئيسية
 st.sidebar.markdown("### 🏢 لوحة التحكم والإدارة")
 main_menu = st.sidebar.radio("القائمة الرئيسية:", [
     "📅 إدارة شهور السنة والفترات",
@@ -142,7 +143,6 @@ main_menu = st.sidebar.radio("القائمة الرئيسية:", [
 # 4. الشاشات والأقسام البرمجية
 # ==========================================
 
-# --- أ. إدارة شهور السنة والفترات داخل مربعات ---
 if main_menu == "📅 إدارة شهور السنة والفترات":
     st.markdown('<div class="main-header"><span style="color:black !important;">📅 إدارة شهور السنة وفترات التشغيل</span></div>', unsafe_allow_html=True)
     
@@ -169,9 +169,9 @@ if main_menu == "📅 إدارة شهور السنة والفترات":
             status_text = "🟢 مفعلة ونشطة" if is_currently_active else "⚪ متوقفة"
             
             st.markdown(f"""
-            <div style="background-color: #331f12; border: 2px solid {'#2ecc71' if is_currently_active else '#704214'}; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
+            <div style="background-color: #dcd6d0; border: 2px solid {'#2ecc71' if is_currently_active else '#4a2e18'}; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
                 <h4 style="color: black !important; font-weight: 900;">{m} 2026</h4>
-                <p style="color: {'#2ecc71' if is_currently_active else '#f7fafc'}; font-weight: bold;">{status_text}</p>
+                <p style="color: {'#166534' if is_currently_active else '#2c221e'}; font-weight: bold;">{status_text}</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -201,14 +201,13 @@ if main_menu == "📅 إدارة شهور السنة والفترات":
                 else:
                     if st.button(f"▶️ تشغيل الفترة {m}", key=f"start_{m}"):
                         conn = get_db()
-                        conn.execute("UPDATE active_periods SET is_active=0") # إيقاف الباقي
+                        conn.execute("UPDATE active_periods SET is_active=0")
                         conn.execute("UPDATE active_periods SET is_active=1 WHERE id=?", (p_db_id,))
                         conn.commit()
                         conn.close()
                         st.success(f"تم تفعيل وتشغيل فترة {m} بنجاح!")
                         st.rerun()
 
-# --- ب. باقي الشاشات تشترط وجود فترة نشطة ---
 elif active_period.empty or active_period.iloc[0]['is_active'] == 0:
     st.markdown('<div class="main-header"><span style="color:black !important;">⚠️ تنبيه هامة: لا توجد فترة نشطة حالياً!</span></div>', unsafe_allow_html=True)
     st.error("❌ السيستم لا يعمل بدون تحديد وتشغيل فترة من صفحة (إدارة شهور السنة والفترات) أعلاه. يرجى الذهاب لتفعيل شهر أولاً.")
